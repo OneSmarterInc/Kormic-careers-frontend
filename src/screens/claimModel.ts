@@ -46,6 +46,22 @@ export function claimError(kind: 'not_found' | 'bad_code' | 'expired' | 'locked'
   }
 }
 
+/**
+ * What someone without an invitation is told.
+ *
+ * There is no self-signup: a practice adds a person to its list and sends a
+ * code, and the claim flow is the only thing that mints a session. Saying so
+ * is the whole point of this string. The screen previously offered "I came
+ * here on my own", handed out an empty session, and let the person walk four
+ * screens before the first submission failed with nothing to explain it.
+ *
+ * It names no practice and promises no timeline, because we do not control
+ * either.
+ */
+export const invitationOnlyNote =
+  'Kormic works by invitation. A practice adds you to their list and sends you a code, ' +
+  'and that code is what starts this. If you are speaking to a practice already, ask them for it.';
+
 export function attemptsLine(used: number): string | undefined {
   const left = MAX_ATTEMPTS - used;
   if (used === 0 || left <= 0) return undefined;

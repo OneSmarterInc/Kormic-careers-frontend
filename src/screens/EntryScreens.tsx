@@ -4,7 +4,7 @@ import { CandidateState, Person, isEmailEditable, isPersonComplete } from '../mo
 import { CandidateServices } from '../services/candidateServices';
 import { CandidateAction } from '../state/candidateReducer';
 import { colors, radii, spacing, type } from '../theme/tokens';
-import { CODE_LENGTH, attemptsLine, claimError, isCodeWellFormed } from './claimModel';
+import { CODE_LENGTH, attemptsLine, claimError, invitationOnlyNote, isCodeWellFormed } from './claimModel';
 import { stepCountLine } from './tourModel';
 
 interface Props {
@@ -37,6 +37,7 @@ export function EntryScreen({ state, dispatch, services }: Props) {
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
+  const [showNote, setShowNote] = useState(false);
 
   async function startClaim() {
     if (!token.trim()) return;
@@ -78,16 +79,12 @@ export function EntryScreen({ state, dispatch, services }: Props) {
         {failure ? <Text style={styles.error}>{failure}</Text> : null}
       </View>
 
-      <Pressable
-        onPress={() => {
-          dispatch({ type: 'SET_ENTRY_MODE', mode: 'signup' });
-          dispatch({ type: 'SET_AUTH_SESSION', session: {} });
-          dispatch({ type: 'NEXT' });
-        }}
-        accessibilityRole="button"
-      >
-        <Text style={styles.link}>I came here on my own</Text>
+      {/* No session is handed out here. There is nothing to sign up to yet,
+          and pretending otherwise is what made this a dead end. */}
+      <Pressable onPress={() => setShowNote(true)} accessibilityRole="button">
+        <Text style={styles.link}>I do not have a code</Text>
       </Pressable>
+      {showNote ? <Text style={styles.note}>{invitationOnlyNote}</Text> : null}
     </ScrollView>
   );
 }
@@ -240,5 +237,6 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.5 },
   primaryLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 15, color: colors.ink },
   link: { ...type.caption, textAlign: 'center', textDecorationLine: 'underline' },
+  note: { ...type.caption, textAlign: 'center' },
   error: { ...type.caption, color: colors.error },
 });

@@ -79,9 +79,14 @@ export function canAdvanceFrom(state: CandidateState): boolean {
       // The tour cannot be shown before the corridor says what it will ask.
       return Boolean(state.corridor);
     case 'Entry':
+      // A session object with no access token is not a session. The entry
+      // screen used to hand out an empty one so the person could walk on,
+      // which read as signed in for the length of the ladder and then failed
+      // on the first submission. Nothing mints a session outside the claim
+      // flow, so requiring the token is what keeps that path honestly shut.
       return state.entryMode === 'claim'
         ? Boolean(state.claim)
-        : Boolean(state.authSession);
+        : Boolean(state.authSession?.access);
     case 'ClaimCode':
       return Boolean(state.claim?.verified);
     case 'BasicInfo':

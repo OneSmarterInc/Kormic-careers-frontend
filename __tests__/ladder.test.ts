@@ -8,7 +8,7 @@ import { screenFor } from '../src/navigation/screens';
 import { buildProfileRows, methodCounts, outstandingPrompts } from '../src/screens/profileModel';
 import { escalationLine, mergeEscalations, openQueryIds, parseMessage } from '../src/screens/chatModel';
 import { buildTour, stepCountLine } from '../src/screens/tourModel';
-import { attemptsLine, claimError, countDivergences, divergenceNote, isCodeWellFormed, mayShowPrefill, revealableBeforeVerify } from '../src/screens/claimModel';
+import { attemptsLine, claimError, countDivergences, divergenceNote, invitationOnlyNote, isCodeWellFormed, mayShowPrefill, revealableBeforeVerify } from '../src/screens/claimModel';
 import { personIdField, toCorridor, toMessage, toSession, toVerificationClaim } from '../src/services/contract';
 
 function withCorridor(corridor: CorridorConfig = sampleCorridor): CandidateState {
@@ -76,6 +76,17 @@ describe('gates', () => {
     expect(canAdvanceFrom({ ...completePerson(bare), route: 'BasicInfo' })).toBe(true);
     const noCorridor = { ...completePerson(initialCandidateState), route: 'BasicInfo' as const };
     expect(canAdvanceFrom(noCorridor)).toBe(false);
+  });
+
+  it('does not let an empty session stand in for being signed in', () => {
+    // The entry screen used to hand out `{}` so a person without an invitation
+    // could walk on. It read as signed in for the whole ladder and then failed
+    // on the first submission, with nothing on screen to explain why.
+    const entry = { ...withCorridor(), route: 'Entry' as const };
+    expect(canAdvanceFrom(entry)).toBe(false);
+    expect(canAdvanceFrom({ ...entry, authSession: {} })).toBe(false);
+    expect(canAdvanceFrom({ ...entry, authSession: { refresh: 'r' } })).toBe(false);
+    expect(canAdvanceFrom({ ...entry, authSession: { access: 'a' } })).toBe(true);
   });
 
   it('advances a required rung on submitted, without waiting for the verifier', () => {
@@ -396,6 +407,14 @@ describe('claim entry reveals nothing before the code verifies', () => {
     expect(attemptsLine(0)).toBe(undefined);
     expect(attemptsLine(4)).toBe('One try left before you need a new code.');
     expect(attemptsLine(5)).toBe(undefined);
+  });
+
+  it('tells someone without a code how to get one, and promises nothing else', () => {
+    // There is no self-signup, so this copy must not imply there is one, and
+    // must not invent a timeline we do not control.
+    expect(invitationOnlyNote).toContain('invitation');
+    expect(/sign up|create an account|register/i.test(invitationOnlyNote)).toBe(false);
+    expect(/soon|shortly|coming|waitlist/i.test(invitationOnlyNote)).toBe(false);
   });
 
   it('describes a changed detail as kept, not corrected', () => {

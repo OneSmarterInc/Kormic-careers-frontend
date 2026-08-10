@@ -137,6 +137,7 @@ export function createLiveCandidateServices(deps: LiveServiceDeps): CandidateSer
           path: endpoints.rungSubmit,
           method: 'POST',
           body: {
+            corridor_key: submission.corridorKey,
             rung_key: submission.rungKey,
             value: submission.value ?? null,
             jurisdiction: submission.jurisdiction ?? null,

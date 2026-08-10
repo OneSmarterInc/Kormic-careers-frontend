@@ -1,4 +1,5 @@
 import { ApiError, createApiClient } from '../src/services/api';
+import { createLiveCandidateServices } from '../src/services/liveServices';
 import { FALLBACK_CORRIDOR_KEY, readConfig } from '../src/services/config';
 import { decodeSession, memoryTokenStore } from '../src/services/tokenStorage';
 import { oauthPollPolicy, poll, pollHandle } from '../src/services/polling';
@@ -198,6 +199,99 @@ describe('refresh-and-retry exists exactly once', () => {
     await expect(api.send({ path: '/api/agent/history/' })).rejects.toMatchObject({
       code: 'server',
     });
+  });
+});
+
+// --- what the submission actually puts on the wire -------------------------
+
+describe('a rung submission names its corridor', () => {
+  /**
+   * The backend validates `corridor_key` on the submission and a rung key is
+   * only unique within a corridor, so leaving it out was a 404 on every
+   * submission. This pins the payload so the two sides cannot drift apart
+   * again without a test saying so.
+   */
+  it('sends corridor_key alongside the rung, in snake case', async () => {
+    let sent: Record<string, unknown> = {};
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      sent = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+      return reply(201, {
+        rung_key: 'licence',
+        fact_type: 'licence',
+        fact_value: 'A1234',
+        method: 'self_attested',
+        source_ref: null,
+        verifier: null,
+        verifier_version: null,
+        checked_at: '2026-08-07T10:00:00Z',
+        expires_at: null,
+        status: 'active',
+      });
+    }) as unknown as typeof fetch;
+
+    const services = createLiveCandidateServices({
+      config: {
+        apiHost: 'https://api.test',
+        corridorKey: 'sample',
+        useMocks: false,
+        oauthRedirect: 'kormiccareers://oauth',
+      },
+      tokens: signedIn(),
+      fetchImpl,
+    });
+
+    const claim = await services.verifier.submit(undefined, {
+      corridorKey: 'sample',
+      rungKey: 'licence',
+      value: 'A1234',
+      jurisdiction: 'New York',
+    });
+
+    expect(sent.corridor_key).toBe('sample');
+    expect(sent.rung_key).toBe('licence');
+    expect(sent.value).toBe('A1234');
+    expect(sent.jurisdiction).toBe('New York');
+    // No camel case leaks onto the wire.
+    expect(sent.corridorKey).toBe(undefined);
+    expect(sent.rungKey).toBe(undefined);
+    // And the reply comes back as a domain claim, not a wire row.
+    expect(claim.checkedAt).toBe('2026-08-07T10:00:00Z');
+    expect(claim.method).toBe('self_attested');
+  });
+
+  it('sends null for a field the rung does not ask for, which the server accepts', async () => {
+    let sent: Record<string, unknown> = {};
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      sent = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+      return reply(201, {
+        rung_key: 'cv',
+        fact_type: 'cv',
+        fact_value: '',
+        method: 'self_attested',
+        source_ref: null,
+        verifier: null,
+        verifier_version: null,
+        checked_at: '2026-08-07T10:00:00Z',
+        expires_at: null,
+        status: 'active',
+      });
+    }) as unknown as typeof fetch;
+
+    const services = createLiveCandidateServices({
+      config: {
+        apiHost: 'https://api.test',
+        corridorKey: 'sample',
+        useMocks: false,
+        oauthRedirect: 'kormiccareers://oauth',
+      },
+      tokens: signedIn(),
+      fetchImpl,
+    });
+
+    await services.verifier.submit(undefined, { corridorKey: 'sample', rungKey: 'cv' });
+
+    expect(sent.value).toBe(null);
+    expect(sent.jurisdiction).toBe(null);
   });
 });
 

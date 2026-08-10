@@ -24,6 +24,12 @@ export interface ClaimService {
 }
 
 export interface RungSubmission {
+  /**
+   * Which corridor this claim is being written against. A rung key is only
+   * unique within a corridor, so the submission has to name one — the server
+   * cannot infer it from `rungKey` alone.
+   */
+  corridorKey: string;
   rungKey: string;
   value?: string;
   jurisdiction?: string;

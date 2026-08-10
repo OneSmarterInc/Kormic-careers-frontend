@@ -127,7 +127,11 @@ export function RungScreen({ state, dispatch, services }: Props) {
   }
 
   async function handlePrimary() {
-    if (!rung || !key) return;
+    // The corridor is what a claim is written against, so a submission cannot
+    // be made before it has loaded. In practice `rung` came from it, so this
+    // holds by construction; the check is what tells the compiler that.
+    const corridorKey = state.corridor?.key;
+    if (!rung || !key || !corridorKey) return;
     setTouched(true);
     setFailure(undefined);
 
@@ -163,6 +167,7 @@ export function RungScreen({ state, dispatch, services }: Props) {
       }
 
       const claim = await services.verifier.submit(state.authSession, {
+        corridorKey,
         rungKey: key,
         value: draft.value,
         jurisdiction: draft.jurisdiction,

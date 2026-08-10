@@ -3,7 +3,7 @@ import { CandidateState, initialCandidateState, rungRoute } from '../src/models/
 import { canAdvanceFrom, getProgress, orderedRoutes, skippedRungs } from '../src/navigation/routes';
 import { candidateReducer } from '../src/state/candidateReducer';
 import { sampleCorridor } from '../src/services/candidateServices';
-import { canSkip, canSubmit, errorFor, fieldsFor, statusLine } from '../src/screens/rungModel';
+import { canSkip, canSubmit, errorFor, fieldsFor, oauthResult, rungStateFromClaim, statusLine, submissionSteps } from '../src/screens/rungModel';
 import { screenFor } from '../src/navigation/screens';
 import { buildProfileRows, methodCounts, outstandingPrompts } from '../src/screens/profileModel';
 import { escalationLine, mergeEscalations, openQueryIds, parseMessage } from '../src/screens/chatModel';
@@ -202,6 +202,44 @@ describe('rung screen model', () => {
   it('offers skip only on optional rungs', () => {
     expect(canSkip(licence)).toBe(false);
     expect(canSkip(registry)).toBe(true);
+  });
+
+  it('uploads the file before writing the claim, never after', () => {
+    // A claim recorded against a document that never arrived is the half-truth
+    // the verification model exists to avoid, so the order is a rule.
+    expect(submissionSteps(cv, { documentName: 'cv.pdf' })).toEqual(['upload', 'submit']);
+    expect(submissionSteps(licence, { value: 'A1234', jurisdiction: 'NY' })).toEqual(['submit']);
+    // Nothing chosen yet, so there is nothing to upload.
+    expect(submissionSteps(cv, {})).toEqual(['submit']);
+  });
+
+  it('keeps waiting while the poll only returns the person’s own submission', () => {
+    // The server writes a self_attested claim the moment a rung is handed in.
+    // Treating that as the verifier's answer stops the poll before anything
+    // has actually been checked.
+    const base = { rungKey: 'licence', factType: 'licence', factValue: 'A1234', checkedAt: '2026-08-10T10:00:00Z' };
+    expect(rungStateFromClaim({ ...base, method: 'self_attested', status: 'active' })).toBe(undefined);
+    expect(rungStateFromClaim({ ...base, method: 'primary_source', status: 'active' })).toBe('confirmed');
+    expect(rungStateFromClaim({ ...base, method: 'source_checked', status: 'active' })).toBe('confirmed');
+  });
+
+  it('does not call a check that came back disagreeing a confirmation', () => {
+    const base = { rungKey: 'licence', factType: 'licence', factValue: 'A1234', checkedAt: '2026-08-10T10:00:00Z' };
+    expect(rungStateFromClaim({ ...base, method: 'primary_source', status: 'failed' })).toBe('needs_attention');
+    expect(rungStateFromClaim({ ...base, method: 'primary_source', status: 'disputed' })).toBe('needs_attention');
+  });
+
+  it('treats an oauth timeout as still checking, never as a failure', () => {
+    // The server may complete the handshake after the client stops asking, so
+    // calling it failed would send the person back to the start of a rung that
+    // is about to succeed.
+    const github = { key: 'github', displayName: 'GitHub', requirement: 'optional' as const, input: 'oauth' as const, order: 4 };
+    expect(oauthResult(github, undefined).rungState).toBe('checking');
+    expect(oauthResult(github, 'error').rungState).toBe('unsubmitted');
+    expect(oauthResult(github, 'connected').rungState).toBe('confirmed');
+    expect(oauthResult(github, 'connected').failure).toBe(undefined);
+    // The rung is named from the corridor, never hard-coded in the copy.
+    expect(oauthResult(github, 'error').failure).toContain('GitHub');
   });
 });
 

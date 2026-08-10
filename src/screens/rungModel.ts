@@ -1,5 +1,5 @@
 import { CorridorRung, VerificationClaim, methodLabels } from '../models/corridor';
-import { RungProgress } from '../models/onboarding';
+import { RungProgress, RungState } from '../models/onboarding';
 
 /**
  * Everything the rung screen needs to decide, as pure functions. The component
@@ -70,6 +70,62 @@ export function primaryActionLabel(rung: CorridorRung, progress?: RungProgress):
 
 export function canSkip(rung: CorridorRung): boolean {
   return rung.requirement === 'optional';
+}
+
+// --- handing a rung in ----------------------------------------------------
+
+export type SubmissionStep = 'upload' | 'submit';
+
+/**
+ * What handing in this rung involves, in order.
+ *
+ * The upload goes first. A claim recorded against a document that never
+ * arrived is exactly the half-truth the whole verification model exists to
+ * avoid, so the ordering is a rule rather than an implementation detail, and
+ * it lives here where a test can hold it.
+ */
+export function submissionSteps(rung: CorridorRung, draft: RungDraft): SubmissionStep[] {
+  if (rung.input === 'document_upload' && draft.documentName) return ['upload', 'submit'];
+  return ['submit'];
+}
+
+/**
+ * What a polled claim means for the rung, or undefined if it means nothing yet.
+ *
+ * The submission endpoint writes a self_attested claim immediately, so polling
+ * for "has the verifier answered" and accepting any claim at all stops on the
+ * person's own submission echoed back. Only a method above self_attested is a
+ * verifier having said something, and until then the poll keeps waiting.
+ */
+export function rungStateFromClaim(claim: VerificationClaim): RungState | undefined {
+  if (claim.method === 'self_attested') return undefined;
+  // A check that came back disagreeing is not a confirmation, and the
+  // Navigator asks about it rather than the screen declaring it good.
+  if (claim.status === 'failed' || claim.status === 'disputed') return 'needs_attention';
+  return 'confirmed';
+}
+
+/**
+ * What the OAuth handshake ending means. Running out of attempts is
+ * deliberately not a failure: the server may still complete the handshake
+ * after the client stops asking, so the rung stays checking rather than being
+ * called failed and sent back to the start.
+ */
+export function oauthResult(
+  rung: CorridorRung,
+  outcome: 'connected' | 'error' | undefined,
+): { rungState: RungState; failure?: string } {
+  if (outcome === 'connected') return { rungState: 'confirmed' };
+  if (outcome === 'error') {
+    return {
+      rungState: 'unsubmitted',
+      failure: `${rung.displayName} did not connect. Try again.`,
+    };
+  }
+  return {
+    rungState: 'checking',
+    failure: `${rung.displayName} is taking longer than expected. You can carry on.`,
+  };
 }
 
 /**

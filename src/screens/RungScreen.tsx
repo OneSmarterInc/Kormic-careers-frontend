@@ -12,8 +12,11 @@ import {
   canSubmit,
   errorFor,
   fieldsFor,
+  oauthResult,
   primaryActionLabel,
+  rungStateFromClaim,
   statusLine,
+  submissionSteps,
 } from './rungModel';
 
 interface Props {
@@ -61,12 +64,19 @@ export function RungScreen({ state, dispatch, services }: Props) {
 
     void poll(
       verifierPollPolicy,
-      () => services.verifier.status(state.authSession, key),
+      async () => {
+        const claim = await services.verifier.status(state.authSession, key);
+        if (!claim) return undefined;
+        // Keep waiting while all that comes back is the person's own
+        // submission. rungStateFromClaim is what decides that.
+        const next = rungStateFromClaim(claim);
+        return next ? { claim, next } : undefined;
+      },
       { handle },
-    ).then((claim) => {
-      if (!claim || handle.cancelled) return;
-      dispatch({ type: 'RECORD_CLAIM', claim });
-      dispatch({ type: 'SET_RUNG_STATE', key, state: 'confirmed' });
+    ).then((result) => {
+      if (!result || handle.cancelled) return;
+      dispatch({ type: 'RECORD_CLAIM', claim: result.claim });
+      dispatch({ type: 'SET_RUNG_STATE', key, state: result.next });
     });
 
     return () => handle.cancel();
@@ -101,23 +111,21 @@ export function RungScreen({ state, dispatch, services }: Props) {
         return status === 'pending' ? undefined : status;
       });
 
+      const result = oauthResult(current, outcome);
+
       if (outcome === 'connected') {
         const claim = await services.verifier.status(state.authSession, rungKey);
         if (claim) dispatch({ type: 'RECORD_CLAIM', claim });
-        dispatch({ type: 'SET_RUNG_STATE', key: rungKey, state: 'confirmed' });
+        // The claim the provider produced decides the state where there is
+        // one; a connection with a disagreeing check is not a confirmation.
+        const next = claim ? rungStateFromClaim(claim) : undefined;
+        dispatch({ type: 'SET_RUNG_STATE', key: rungKey, state: next ?? result.rungState });
         dispatch({ type: 'NEXT' });
         return;
       }
 
-      if (outcome === 'error') {
-        dispatch({ type: 'SET_RUNG_STATE', key: rungKey, state: 'unsubmitted' });
-        setFailure(`${current.displayName} did not connect. Try again.`);
-        return;
-      }
-
-      // Ran out of attempts. The rung stays checking rather than being called
-      // failed, because the handshake may still land on the server after this.
-      setFailure(`${current.displayName} is taking longer than expected. You can carry on.`);
+      dispatch({ type: 'SET_RUNG_STATE', key: rungKey, state: result.rungState });
+      if (result.failure) setFailure(result.failure);
     } catch {
       dispatch({ type: 'SET_RUNG_STATE', key: rungKey, state: 'unsubmitted' });
       setFailure(`We could not reach ${current.displayName}. Try again.`);
@@ -156,24 +164,27 @@ export function RungScreen({ state, dispatch, services }: Props) {
     try {
       dispatch({ type: 'SUBMIT_RUNG', key, value: draft.value, jurisdiction: draft.jurisdiction });
 
-      // The file goes up before the claim is submitted. A claim recorded
-      // against a document that never arrived is the kind of half-truth the
-      // whole verification model exists to avoid.
-      if (rung.input === 'document_upload' && draft.documentName) {
-        await services.document.upload(state.authSession, key, {
-          name: draft.documentName,
-          uri: draft.documentUri,
+      // The order is `submissionSteps`' decision, not this component's, so the
+      // rule that a file goes up before the claim is written is held by a test
+      // rather than by the order two awaits happen to sit in.
+      for (const step of submissionSteps(rung, draft)) {
+        if (step === 'upload' && draft.documentName) {
+          await services.document.upload(state.authSession, key, {
+            name: draft.documentName,
+            uri: draft.documentUri,
+          });
+          continue;
+        }
+        const claim = await services.verifier.submit(state.authSession, {
+          corridorKey,
+          rungKey: key,
+          value: draft.value,
+          jurisdiction: draft.jurisdiction,
+          documentUri: draft.documentUri,
         });
+        dispatch({ type: 'RECORD_CLAIM', claim });
       }
 
-      const claim = await services.verifier.submit(state.authSession, {
-        corridorKey,
-        rungKey: key,
-        value: draft.value,
-        jurisdiction: draft.jurisdiction,
-        documentUri: draft.documentUri,
-      });
-      dispatch({ type: 'RECORD_CLAIM', claim });
       if (rung.verifier) dispatch({ type: 'SET_RUNG_STATE', key, state: 'checking' });
       dispatch({ type: 'NEXT' });
     } catch {

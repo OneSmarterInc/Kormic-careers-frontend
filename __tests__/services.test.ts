@@ -19,6 +19,7 @@ import {
   navigatorName,
 } from '../src/screens/agentModel';
 import { buildProfileRows } from '../src/screens/profileModel';
+import { rungStateFromClaim } from '../src/screens/rungModel';
 
 // --- helpers --------------------------------------------------------------
 
@@ -380,6 +381,41 @@ describe('the poller both rungs share', () => {
     );
     expect(result).toBe(undefined);
     expect(calls).toBe(3);
+  });
+
+  it('polls past the submission the server echoes back, to the verifier’s answer', async () => {
+    /**
+     * The bug this pins. `submit_rung` writes a self_attested claim the moment
+     * a rung is handed in, so `claim_status` has something to return
+     * immediately. A poll that stopped at the first claim therefore stopped
+     * before any check had run, and the rung never picked up the real answer.
+     */
+    const claimAt = (method: 'self_attested' | 'primary_source') => ({
+      rungKey: 'licence',
+      factType: 'licence',
+      factValue: 'A1234',
+      method,
+      status: 'active' as const,
+      checkedAt: '2026-08-10T10:00:00Z',
+    });
+
+    let calls = 0;
+    const result = await poll(
+      { attempts: 6, intervalMs: 1 },
+      async () => {
+        calls += 1;
+        // The server answers with the person's own submission until the bot
+        // has finished, then raises the method.
+        const claim = claimAt(calls < 3 ? 'self_attested' : 'primary_source');
+        const next = rungStateFromClaim(claim);
+        return next ? { claim, next } : undefined;
+      },
+      { wait: instant },
+    );
+
+    expect(calls).toBe(3);
+    expect(result?.next).toBe('confirmed');
+    expect(result?.claim.method).toBe('primary_source');
   });
 
   it('stops when the screen that started it goes away', async () => {

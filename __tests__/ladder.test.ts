@@ -135,6 +135,21 @@ describe('claim path pins the address', () => {
     expect(state.person.fullName).toBe('Sample Person');
   });
 
+  it('keeps the claim token, because confirm spends it to mint the session', () => {
+    // Dropping it meant the person finished the claim, walked the whole
+    // ladder, and every request went out with no Authorization header.
+    let state = candidateReducer(withCorridor(), { type: 'SET_ENTRY_MODE', mode: 'claim' });
+    state = candidateReducer(state, { type: 'SET_CLAIM', claim: { maskedEmail: 'p•••@•••.com', token: 't', verified: false } });
+    expect(state.claim?.claimToken).toBe(undefined);
+    state = candidateReducer(state, {
+      type: 'CLAIM_VERIFIED',
+      pinnedEmail: 'roster@example.com',
+      prefill: {},
+      claimToken: 'claim_abc',
+    });
+    expect(state.claim?.claimToken).toBe('claim_abc');
+  });
+
   it('allows an email edit on signup', () => {
     const state = candidateReducer(withCorridor(), {
       type: 'UPDATE_PERSON',

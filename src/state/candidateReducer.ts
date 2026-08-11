@@ -20,7 +20,7 @@ export type CandidateAction =
   | { type: 'SET_CORRIDOR_ERROR'; message: string }
   | { type: 'SET_ENTRY_MODE'; mode: EntryMode }
   | { type: 'SET_CLAIM'; claim: ClaimSession }
-  | { type: 'CLAIM_VERIFIED'; pinnedEmail: string; prefill: Partial<Person> }
+  | { type: 'CLAIM_VERIFIED'; pinnedEmail: string; prefill: Partial<Person>; claimToken?: string }
   | { type: 'SET_AUTH_SESSION'; session: AuthSession }
   | { type: 'UPDATE_PERSON'; field: keyof Person; value: string }
   | { type: 'SUBMIT_RUNG'; key: string; value?: string; jurisdiction?: string }
@@ -66,7 +66,12 @@ export function candidateReducer(
       return {
         ...state,
         claim: state.claim
-          ? { ...state.claim, verified: true, pinnedEmail: action.pinnedEmail }
+          ? {
+              ...state.claim,
+              verified: true,
+              pinnedEmail: action.pinnedEmail,
+              claimToken: action.claimToken,
+            }
           : undefined,
         person: { ...state.person, ...action.prefill, email: action.pinnedEmail },
       };

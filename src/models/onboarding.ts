@@ -61,6 +61,12 @@ export interface ClaimSession {
   verified: boolean;
   /** Set from the roster row and not editable by the claimant. */
   pinnedEmail?: string;
+  /**
+   * Handed back by verify and spent by confirm, which is what mints the
+   * session. Dropping it meant the person finished the claim and still had no
+   * token, so every later request went out unauthenticated.
+   */
+  claimToken?: string;
 }
 
 export interface AuthSession {

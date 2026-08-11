@@ -107,6 +107,8 @@ export function ClaimCodeScreen({ state, dispatch, services }: Props) {
         type: 'CLAIM_VERIFIED',
         pinnedEmail: result.pinnedEmail,
         prefill: result.prefill,
+        // Kept, because confirm spends it to mint the session.
+        claimToken: result.claimToken,
       });
       dispatch({ type: 'NEXT' });
     } catch {
@@ -163,8 +165,41 @@ const personFields: { key: keyof Person; label: string }[] = [
   { key: 'country', label: 'Country' },
 ];
 
-export function BasicInfoScreen({ state, dispatch }: Omit<Props, 'services'>) {
+export function BasicInfoScreen({ state, dispatch, services }: Props) {
   const emailLocked = !isEmailEditable(state);
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | undefined>();
+
+  /**
+   * This is where the claim is spent and the session begins.
+   *
+   * Continue used to only dispatch NEXT, so a person finished the claim, was
+   * shown their own details, and walked the rest of the ladder holding no
+   * token at all. Against mocks that looked fine because nothing checked; the
+   * first real request answered 401.
+   */
+  async function handleContinue() {
+    const claimToken = state.claim?.claimToken;
+    if (busy) return;
+    if (!claimToken) {
+      // No claim to spend. Nothing else mints a session today, so there is
+      // nothing to do here but carry on and let the gates hold.
+      dispatch({ type: 'NEXT' });
+      return;
+    }
+
+    setBusy(true);
+    setFailure(undefined);
+    try {
+      const session = await services.claim.confirm(claimToken, state.person);
+      dispatch({ type: 'SET_AUTH_SESSION', session });
+      dispatch({ type: 'NEXT' });
+    } catch {
+      setFailure('We could not finish setting you up. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <ScrollView contentContainerStyle={styles.screen}>
@@ -193,13 +228,15 @@ export function BasicInfoScreen({ state, dispatch }: Omit<Props, 'services'>) {
         );
       })}
 
+      {failure ? <Text style={styles.error}>{failure}</Text> : null}
+
       <Pressable
-        style={[styles.primary, !isPersonComplete(state.person) && styles.disabled]}
-        onPress={() => dispatch({ type: 'NEXT' })}
-        disabled={!isPersonComplete(state.person)}
+        style={[styles.primary, (!isPersonComplete(state.person) || busy) && styles.disabled]}
+        onPress={handleContinue}
+        disabled={!isPersonComplete(state.person) || busy}
         accessibilityRole="button"
       >
-        <Text style={styles.primaryLabel}>Continue</Text>
+        {busy ? <ActivityIndicator color={colors.ink} /> : <Text style={styles.primaryLabel}>Continue</Text>}
       </Pressable>
     </ScrollView>
   );

@@ -137,7 +137,10 @@ export default function App({
             </Pressable>
           </View>
         ) : screen === 'rung' ? (
-          <RungScreen state={state} dispatch={dispatch} services={services} />
+          // Keyed by route. Every rung renders the same component, so without
+          // this React keeps the instance across the route change and the
+          // draft written on one rung is submitted as the next one's answer.
+          <RungScreen key={state.route} state={state} dispatch={dispatch} services={services} />
         ) : screen === 'profile' ? (
           <ProfileScreen state={state} dispatch={dispatch} />
         ) : screen === 'chat' ? (
@@ -159,7 +162,7 @@ export default function App({
         ) : screen === 'claimCode' ? (
           <ClaimCodeScreen state={state} dispatch={dispatch} services={services} />
         ) : screen === 'basicInfo' ? (
-          <BasicInfoScreen state={state} dispatch={dispatch} />
+          <BasicInfoScreen state={state} dispatch={dispatch} services={services} />
         ) : (
           <View style={styles.centred}>
             <Text style={type.title}>{state.route}</Text>

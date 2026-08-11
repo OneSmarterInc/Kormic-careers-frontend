@@ -13,6 +13,18 @@ export interface CorridorService {
   load(corridorKey: string): Promise<CorridorConfig>;
 }
 
+/**
+ * The open path. Careers admits anyone: a person gives an address, proves they
+ * control it, and is in. Kormic Student works the other way round, by
+ * invitation, and the two corridors are not the same product.
+ */
+export interface SignupService {
+  /** Asks for a code. Answers identically whether or not the address is known. */
+  start(email: string): Promise<{ email: string }>;
+  /** Proves the address and mints the session. */
+  verify(email: string, code: string): Promise<AuthSession>;
+}
+
 export interface ClaimService {
   /** Returns a masked address only. Possession of the link reveals nothing else. */
   start(token: string): Promise<{ maskedEmail: string }>;
@@ -106,6 +118,7 @@ export interface NotificationService {
 
 export interface CandidateServices {
   corridor: CorridorService;
+  signup: SignupService;
   claim: ClaimService;
   verifier: VerifierService;
   oauth: OAuthService;
@@ -128,9 +141,12 @@ export const sampleCorridor: CorridorConfig = {
   key: 'sample',
   displayName: 'Sample corridor',
   rungs: [
-    { key: 'licence', displayName: 'Licence', requirement: 'required', input: 'identifier_with_jurisdiction', verifier: 'licence_bot', order: 1 },
-    { key: 'certification', displayName: 'Certification', requirement: 'required', input: 'identifier', verifier: 'cert_bot', order: 2 },
-    { key: 'registry', displayName: 'Registry number', requirement: 'optional', input: 'identifier', verifier: 'registry_bot', order: 3 },
+    // The three postures, so a clean clone shows all three states rather than
+    // only the happy one. Which real authority is which is research with a
+    // defined end, and is not guessed at here.
+    { key: 'licence', displayName: 'Licence', requirement: 'required', input: 'identifier_with_jurisdiction', verifier: 'licence_bot', route: 'paid', order: 1 },
+    { key: 'certification', displayName: 'Certification', requirement: 'required', input: 'identifier', verifier: 'cert_bot', route: 'paid', order: 2 },
+    { key: 'registry', displayName: 'Registry number', requirement: 'optional', input: 'identifier', verifier: 'registry_bot', route: 'free', order: 3 },
     { key: 'github', displayName: 'GitHub', requirement: 'not_applicable', input: 'oauth', order: 4 },
     { key: 'cv', displayName: 'CV', requirement: 'required', input: 'document_upload', order: 5 },
     { key: 'linkedin', displayName: 'LinkedIn', requirement: 'optional', input: 'screenshots', order: 6 },
@@ -142,6 +158,17 @@ export const mockCandidateServices: CandidateServices = {
     async load() {
       await wait(200);
       return sampleCorridor;
+    },
+  },
+  signup: {
+    async start(email) {
+      await wait(200);
+      return { email: email.trim().toLowerCase() };
+    },
+    async verify(_email, code) {
+      await wait(200);
+      if (code !== '123456') throw new Error('That code did not match.');
+      return { access: 'mock-access', refresh: 'mock-refresh', personId: 'person_1' };
     },
   },
   claim: {

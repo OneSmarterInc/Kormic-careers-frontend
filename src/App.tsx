@@ -13,7 +13,13 @@ import { ProfileScreen } from './screens/ProfileScreen';
 import { ChatScreen } from './screens/ChatScreen';
 import { TourScreen } from './screens/TourScreen';
 import { AgentLiveScreen, BuildingAgentScreen } from './screens/AgentScreens';
-import { BasicInfoScreen, ClaimCodeScreen, EntryScreen, WelcomeScreen } from './screens/EntryScreens';
+import {
+  BasicInfoScreen,
+  ClaimCodeScreen,
+  EntryScreen,
+  JoinCodeScreen,
+  WelcomeScreen,
+} from './screens/EntryScreens';
 import { candidateReducer } from './state/candidateReducer';
 import { colors, radii, spacing, type } from './theme/tokens';
 
@@ -159,6 +165,8 @@ export default function App({
           <WelcomeScreen state={state} dispatch={dispatch} />
         ) : screen === 'entry' ? (
           <EntryScreen state={state} dispatch={dispatch} services={services} />
+        ) : screen === 'joinCode' ? (
+          <JoinCodeScreen state={state} dispatch={dispatch} services={services} />
         ) : screen === 'claimCode' ? (
           <ClaimCodeScreen state={state} dispatch={dispatch} services={services} />
         ) : screen === 'basicInfo' ? (

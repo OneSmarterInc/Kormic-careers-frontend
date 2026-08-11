@@ -1,4 +1,13 @@
-import { CorridorConfig, CorridorRung, VerificationClaim, VerificationMethod, applicableRungs, methodLabels } from '../models/corridor';
+import {
+  CorridorConfig,
+  CorridorRung,
+  VerificationClaim,
+  VerificationMethod,
+  applicableRungs,
+  awaitsPractice,
+  methodLabels,
+  runsOnJoin,
+} from '../models/corridor';
 import { CandidateState, RungState, claimsForRung } from '../models/onboarding';
 import { formatDate } from './rungModel';
 
@@ -34,10 +43,16 @@ export function methodLine(
   claim: VerificationClaim | undefined,
   rungState: RungState,
   now: Date = new Date(),
+  rung?: CorridorRung,
 ): string {
   if (!claim) {
     if (rungState === 'skipped') return 'Not added';
-    if (rungState === 'submitted' || rungState === 'checking') return 'Checking now';
+    if (rungState === 'checking') return 'Checking now';
+    if (rungState === 'submitted') {
+      if (rung && runsOnJoin(rung)) return 'Checking now';
+      if (rung && awaitsPractice(rung)) return 'Held. Confirmed if a practice takes you forward';
+      return 'Provided by you, not yet checked';
+    }
     return 'Not provided';
   }
   const status = effectiveStatus(claim, now);
@@ -67,7 +82,7 @@ export function buildProfileRows(state: CandidateState, now: Date = new Date()):
       requirement: rung.requirement,
       rungState,
       claim,
-      methodLine: methodLine(claim, rungState, now),
+      methodLine: methodLine(claim, rungState, now, rung),
       needsAttention,
       actionLabel: actionFor(rung, rungState, status),
     };

@@ -8,3 +8,7 @@ build/
 .env.local
 ios/
 android/
+
+# patch(1) leftovers
+*.orig
+*.rej

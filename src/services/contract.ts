@@ -6,6 +6,7 @@ import {
   RungInput,
   VerificationClaim,
   VerificationMethod,
+  VerificationRoute,
 } from '../models/corridor';
 import { Person } from '../models/onboarding';
 import { EscalationStatus, Message, RawMessage, parseMessage } from '../screens/chatModel';
@@ -29,6 +30,10 @@ import { EscalationStatus, Message, RawMessage, parseMessage } from '../screens/
 
 export const endpoints = {
   corridor: (key: string) => `/api/corridors/${key}/`,
+  // The open front door. Careers is not invitation-only; the claim routes
+  // below are the secondary path for when a practice brings a roster.
+  signupStart: '/api/signup/start/',
+  signupVerify: '/api/signup/verify/',
   claimStart: '/api/claim/start/',
   claimVerify: '/api/claim/verify/',
   claimConfirm: '/api/claim/confirm/',
@@ -52,6 +57,8 @@ export interface WireCorridorRung {
   requirement: Requirement;
   input: RungInput;
   verifier: string | null;
+  /** Null means nobody has established the cost. Read as 'none', never as free. */
+  route: VerificationRoute | null;
   order: number;
 }
 
@@ -72,6 +79,11 @@ export interface WireVerificationClaim {
   checked_at: string | null;
   expires_at: string | null;
   status: ClaimStatus;
+}
+
+export interface WireSignupStart {
+  /** Echoed back normalised. Never the code, which would defeat the point. */
+  email: string;
 }
 
 export interface WireClaimStart {
@@ -147,6 +159,7 @@ export function toRung(wire: WireCorridorRung): CorridorRung {
     requirement: present(wire.requirement, 'rung.requirement'),
     input: present(wire.input, 'rung.input'),
     verifier: wire.verifier ?? undefined,
+    route: wire.route ?? undefined,
     order: present(wire.order, 'rung.order'),
   };
 }
@@ -196,6 +209,10 @@ export function toEscalationStatuses(
     queryId: present(entry.query_id, 'escalation.query_id'),
     status: present(entry.status, 'escalation.status'),
   }));
+}
+
+export function toSignupStart(wire: WireSignupStart): { email: string } {
+  return { email: present(wire.email, 'signupStart.email') };
 }
 
 export function toClaimStart(wire: WireClaimStart): { maskedEmail: string } {

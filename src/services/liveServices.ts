@@ -14,6 +14,7 @@ import {
   WireOAuthAuthorize,
   WireOAuthStatus,
   WireSession,
+  WireSignupStart,
   WireVerificationClaim,
   endpoints,
   toAuthorizeUrl,
@@ -24,6 +25,7 @@ import {
   toMessage,
   toOAuthStatus,
   toSession,
+  toSignupStart,
   toVerificationClaim,
 } from './contract';
 
@@ -79,6 +81,36 @@ export function createLiveCandidateServices(deps: LiveServiceDeps): CandidateSer
           auth: false, // the ladder is shown before anyone signs in
         });
         return toCorridor(wire);
+      },
+    },
+
+    signup: {
+      async start(email) {
+        const wire = await api.send<WireSignupStart>({
+          path: endpoints.signupStart,
+          method: 'POST',
+          body: { email },
+          auth: false,
+        });
+        return toSignupStart(wire);
+      },
+
+      async verify(email, code) {
+        const wire = await api.send<WireSession>({
+          path: endpoints.signupVerify,
+          method: 'POST',
+          body: { email, code },
+          auth: false,
+        });
+        const session = toSession(wire);
+        // Stored the moment it exists, exactly as on the claim path, so the
+        // next request is authenticated without a screen handling a token.
+        await api.adopt({
+          access: session.access,
+          refresh: session.refresh,
+          personId: session.personId,
+        });
+        return session;
       },
     },
 

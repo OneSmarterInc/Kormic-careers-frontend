@@ -1,11 +1,11 @@
-import { CorridorConfig } from '../src/models/corridor';
+import { CorridorConfig, awaitsPractice, runsOnJoin } from '../src/models/corridor';
 import { CandidateState, initialCandidateState, rungRoute } from '../src/models/onboarding';
 import { canAdvanceFrom, getProgress, orderedRoutes, skippedRungs } from '../src/navigation/routes';
 import { candidateReducer } from '../src/state/candidateReducer';
 import { sampleCorridor } from '../src/services/candidateServices';
 import { canSkip, canSubmit, errorFor, fieldsFor, oauthResult, rungStateFromClaim, statusLine, submissionSteps } from '../src/screens/rungModel';
 import { screenFor } from '../src/navigation/screens';
-import { buildProfileRows, methodCounts, outstandingPrompts } from '../src/screens/profileModel';
+import { buildProfileRows, methodCounts, methodLine, outstandingPrompts } from '../src/screens/profileModel';
 import { escalationLine, mergeEscalations, openQueryIds, parseMessage } from '../src/screens/chatModel';
 import { buildTour, stepCountLine } from '../src/screens/tourModel';
 import { attemptsLine, claimError, countDivergences, divergenceNote, invitationOnlyNote, isCodeWellFormed, mayShowPrefill, revealableBeforeVerify } from '../src/screens/claimModel';
@@ -79,14 +79,21 @@ describe('gates', () => {
   });
 
   it('does not let an empty session stand in for being signed in', () => {
-    // The entry screen used to hand out `{}` so a person without an invitation
-    // could walk on. It read as signed in for the whole ladder and then failed
-    // on the first submission, with nothing on screen to explain why.
+    // The entry screen used to hand out `{}` so a person could walk on. It read
+    // as signed in for the whole ladder and then failed on the first
+    // submission, with nothing on screen to explain why.
+    //
+    // The rule is unchanged; the gate that enforces it moved. Entry now mints
+    // nothing on either path, so the session is checked one screen later, where
+    // it actually arrives.
     const entry = { ...withCorridor(), route: 'Entry' as const };
     expect(canAdvanceFrom(entry)).toBe(false);
-    expect(canAdvanceFrom({ ...entry, authSession: {} })).toBe(false);
-    expect(canAdvanceFrom({ ...entry, authSession: { refresh: 'r' } })).toBe(false);
-    expect(canAdvanceFrom({ ...entry, authSession: { access: 'a' } })).toBe(true);
+    expect(canAdvanceFrom({ ...entry, authSession: { access: 'a' } })).toBe(false);
+
+    const code = { ...withCorridor(), route: 'JoinCode' as const };
+    expect(canAdvanceFrom({ ...code, authSession: {} })).toBe(false);
+    expect(canAdvanceFrom({ ...code, authSession: { refresh: 'r' } })).toBe(false);
+    expect(canAdvanceFrom({ ...code, authSession: { access: 'a' } })).toBe(true);
   });
 
   it('advances a required rung on submitted, without waiting for the verifier', () => {
@@ -201,7 +208,12 @@ describe('rung screen model', () => {
   });
 
   it('never says confirmed on the strength of a submission', () => {
+    // Licence has a bot but its authority charges, so nothing is running and
+    // the line must not claim otherwise.
     expect(statusLine(licence, { state: 'submitted' }, [])).toBe(
+      'Saved. A practice can have this confirmed when they take you forward.',
+    );
+    expect(statusLine(registry, { state: 'submitted' }, [])).toBe(
       'Checking this now. You can carry on; we will tell you when it comes back.',
     );
     expect(statusLine(cv, { state: 'submitted' }, [])).toBe('Saved. Nobody has checked this yet.');
@@ -400,7 +412,8 @@ describe('the tour is generated from the corridor', () => {
 
   it('separates what gets checked from what the person tells us', () => {
     const checked = buildTour(sampleCorridor).find((stop) => stop.key === 'checked');
-    expect(checked?.items).toContain('Licence: we check it');
+    expect(checked?.items).toContain('Registry number: we check it now');
+    expect(checked?.items).toContain('Licence: checked if a practice takes you forward');
     expect(checked?.items).toContain('CV: you tell us');
   });
 
@@ -485,8 +498,8 @@ describe('the wire contract holds the boundary', () => {
       key: 'sample',
       display_name: 'Sample corridor',
       rungs: [
-        { key: 'licence', display_name: 'Licence', requirement: 'required', input: 'identifier_with_jurisdiction', verifier: 'licence_bot', order: 1 },
-        { key: 'cv', display_name: 'CV', requirement: 'required', input: 'document_upload', verifier: null, order: 2 },
+        { key: 'licence', display_name: 'Licence', requirement: 'required', input: 'identifier_with_jurisdiction', verifier: 'licence_bot', route: 'paid', order: 1 },
+        { key: 'cv', display_name: 'CV', requirement: 'required', input: 'document_upload', verifier: null, route: null, order: 2 },
       ],
     });
     expect(corridor.displayName).toBe('Sample corridor');
@@ -520,5 +533,138 @@ describe('the wire contract holds the boundary', () => {
     expect(personIdField).toBe('person_id');
     const session = toSession({ access: 'a', refresh: 'r', person_id: 'p1' });
     expect(session.personId).toBe('p1');
+  });
+});
+
+// --- the open door --------------------------------------------------------
+
+describe('careers admits anyone', () => {
+  it('puts a code step on the signup path, not just the invitation path', () => {
+    const signup = orderedRoutes(withCorridor());
+    const claim = orderedRoutes(
+      candidateReducer(withCorridor(), { type: 'SET_ENTRY_MODE', mode: 'claim' }),
+    );
+    expect(signup).toContain('JoinCode');
+    expect(signup).not.toContain('ClaimCode');
+    expect(claim).toContain('ClaimCode');
+    expect(claim).not.toContain('JoinCode');
+  });
+
+  it('leaves Entry with an address and a code sent, never with a session', () => {
+    let state = candidateReducer(withCorridor(), { type: 'SET_ENTRY_MODE', mode: 'signup' });
+    state = { ...state, route: 'Entry' };
+    expect(canAdvanceFrom(state)).toBe(false);
+    state = candidateReducer(state, {
+      type: 'SET_SIGNUP',
+      signup: { email: 'person@example.com', codeSent: true },
+    });
+    expect(canAdvanceFrom({ ...state, route: 'Entry' })).toBe(true);
+    expect(state.authSession).toBe(undefined);
+  });
+
+  it('holds JoinCode until a real session with a token exists', () => {
+    let state = candidateReducer(withCorridor(), {
+      type: 'SET_SIGNUP',
+      signup: { email: 'person@example.com', codeSent: true },
+    });
+    state = { ...state, route: 'JoinCode' };
+    expect(canAdvanceFrom(state)).toBe(false);
+    state = candidateReducer(state, { type: 'SET_AUTH_SESSION', session: {} });
+    expect(canAdvanceFrom({ ...state, route: 'JoinCode' })).toBe(false);
+    state = candidateReducer(state, {
+      type: 'SET_AUTH_SESSION',
+      session: { access: 'a', refresh: 'r', personId: 'p1' },
+    });
+    expect(canAdvanceFrom({ ...state, route: 'JoinCode' })).toBe(true);
+  });
+
+  it('leaves the address editable on the open path and pinned on the invitation one', () => {
+    const joined = candidateReducer(withCorridor(), {
+      type: 'SET_SIGNUP',
+      signup: { email: 'person@example.com', codeSent: true },
+    });
+    expect(joined.person.email).toBe('person@example.com');
+    const edited = candidateReducer(joined, {
+      type: 'UPDATE_PERSON',
+      field: 'email',
+      value: 'other@example.com',
+    });
+    expect(edited.person.email).toBe('other@example.com');
+  });
+
+  it('has a screen for the new route', () => {
+    expect(screenFor('JoinCode')).toBe('joinCode');
+  });
+});
+
+
+// --- cost posture ---------------------------------------------------------
+
+describe('a paid check waits for a practice to decide', () => {
+  const licence = sampleCorridor.rungs[0]!; // has a bot, authority charges
+  const registry = sampleCorridor.rungs[2]!; // has a bot, free route
+  const cv = sampleCorridor.rungs[4]!; // no bot, no route
+
+  it('runs on join only when the route is free and a bot exists', () => {
+    expect(runsOnJoin(registry)).toBe(true);
+    expect(runsOnJoin(licence)).toBe(false);
+    expect(runsOnJoin(cv)).toBe(false);
+  });
+
+  it('treats an unestablished route as none, never as free', () => {
+    const unknown = { ...licence, route: undefined };
+    expect(runsOnJoin(unknown)).toBe(false);
+    expect(awaitsPractice(unknown)).toBe(false);
+  });
+
+  it('never tells a candidate something is being checked when nothing is', () => {
+    // The most common state in an open corridor: submitted, a bot exists, and
+    // nothing will happen until somebody pays.
+    expect(statusLine(licence, { state: 'submitted' }, [])).not.toContain('Checking this now');
+  });
+
+  it('says the same thing on the profile as on the rung screen', () => {
+    expect(methodLine(undefined, 'submitted', new Date(), licence)).toBe(
+      'Held. Confirmed if a practice takes you forward',
+    );
+    expect(methodLine(undefined, 'submitted', new Date(), registry)).toBe('Checking now');
+    expect(methodLine(undefined, 'submitted', new Date(), cv)).toBe(
+      'Provided by you, not yet checked',
+    );
+  });
+
+  it('does not promise a check on join that a candidate cannot get', () => {
+    const body = buildTour(sampleCorridor)
+      .map((stop) => stop.body)
+      .join(' ');
+    expect(body).toContain('a practice decides that when they take you forward');
+  });
+
+  it('carries the posture across the wire, with null meaning none', () => {
+    const corridor = toCorridor({
+      key: 'sample',
+      display_name: 'Sample corridor',
+      rungs: [
+        { key: 'a', display_name: 'A', requirement: 'required', input: 'identifier', verifier: 'bot', route: 'free', order: 1 },
+        { key: 'b', display_name: 'B', requirement: 'required', input: 'identifier', verifier: 'bot', route: null, order: 2 },
+      ],
+    });
+    expect(corridor.rungs[0]?.route).toBe('free');
+    expect(corridor.rungs[1]?.route).toBe(undefined);
+    expect(runsOnJoin(corridor.rungs[1]!)).toBe(false);
+  });
+});
+
+describe('the rung state matches what is happening', () => {
+  it('a paid rung stays submitted rather than entering checking', () => {
+    // Held here rather than only in the copy: the state itself must be honest,
+    // or the profile and any future screen inherits the same lie.
+    const licence = sampleCorridor.rungs[0]!;
+    const registry = sampleCorridor.rungs[2]!;
+    expect(runsOnJoin(licence)).toBe(false);
+    expect(runsOnJoin(registry)).toBe(true);
+    expect(statusLine(licence, { state: 'submitted' }, [])).toBe(
+      'Saved. A practice can have this confirmed when they take you forward.',
+    );
   });
 });

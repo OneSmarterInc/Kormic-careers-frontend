@@ -7,6 +7,7 @@ import {
   Person,
   Route,
   RungProgress,
+  SignupSession,
   initialCandidateState,
   isEmailEditable,
 } from '../models/onboarding';
@@ -19,6 +20,7 @@ export type CandidateAction =
   | { type: 'SET_CORRIDOR'; corridor: CorridorConfig }
   | { type: 'SET_CORRIDOR_ERROR'; message: string }
   | { type: 'SET_ENTRY_MODE'; mode: EntryMode }
+  | { type: 'SET_SIGNUP'; signup: SignupSession }
   | { type: 'SET_CLAIM'; claim: ClaimSession }
   | { type: 'CLAIM_VERIFIED'; pinnedEmail: string; prefill: Partial<Person>; claimToken?: string }
   | { type: 'SET_AUTH_SESSION'; session: AuthSession }
@@ -60,6 +62,14 @@ export function candidateReducer(
       return { ...state, corridorError: action.message };
     case 'SET_ENTRY_MODE':
       return { ...state, entryMode: action.mode };
+    case 'SET_SIGNUP':
+      // The address the person typed. Editable later, unlike a pinned roster
+      // address, because on this path nobody else asserted it.
+      return {
+        ...state,
+        signup: action.signup,
+        person: { ...state.person, email: action.signup.email },
+      };
     case 'SET_CLAIM':
       return { ...state, claim: action.claim };
     case 'CLAIM_VERIFIED':

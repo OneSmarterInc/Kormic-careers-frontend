@@ -15,7 +15,7 @@ export function orderedRoutes(state: CandidateState): Route[] {
   const head: Route[] =
     state.entryMode === 'claim'
       ? ['Welcome', 'Tour', 'Entry', 'ClaimCode', 'BasicInfo']
-      : ['Welcome', 'Tour', 'Entry', 'BasicInfo'];
+      : ['Welcome', 'Tour', 'Entry', 'JoinCode', 'BasicInfo'];
 
   const rungs: Route[] = state.corridor
     ? applicableRungs(state.corridor).map((rung) => rungRoute(rung.key))
@@ -79,14 +79,16 @@ export function canAdvanceFrom(state: CandidateState): boolean {
       // The tour cannot be shown before the corridor says what it will ask.
       return Boolean(state.corridor);
     case 'Entry':
-      // A session object with no access token is not a session. The entry
-      // screen used to hand out an empty one so the person could walk on,
-      // which read as signed in for the length of the ladder and then failed
-      // on the first submission. Nothing mints a session outside the claim
-      // flow, so requiring the token is what keeps that path honestly shut.
+      // A session object with no access token is not a session, and the entry
+      // screen must never hand out an empty one: that reads as signed in for
+      // the length of the ladder and then fails on the first submission.
+      // Neither path mints a session here. Both leave with an address and a
+      // code on its way, and the session arrives one screen later.
       return state.entryMode === 'claim'
         ? Boolean(state.claim)
-        : Boolean(state.authSession?.access);
+        : Boolean(state.signup?.codeSent);
+    case 'JoinCode':
+      return Boolean(state.authSession?.access);
     case 'ClaimCode':
       return Boolean(state.claim?.verified);
     case 'BasicInfo':

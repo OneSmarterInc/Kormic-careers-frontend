@@ -4,7 +4,7 @@ import { CandidateState, Person, isEmailEditable, isPersonComplete } from '../mo
 import { CandidateServices } from '../services/candidateServices';
 import { CandidateAction } from '../state/candidateReducer';
 import { colors, radii, spacing, type } from '../theme/tokens';
-import { CODE_LENGTH, attemptsLine, claimError, invitationOnlyNote, isCodeWellFormed } from './claimModel';
+import { CODE_LENGTH, attemptsLine, claimError, isCodeWellFormed } from './claimModel';
 import { stepCountLine } from './tourModel';
 
 interface Props {
@@ -34,14 +34,42 @@ export function WelcomeScreen({ state, dispatch }: Omit<Props, 'services'>) {
 // --- Entry ----------------------------------------------------------------
 
 export function EntryScreen({ state, dispatch, services }: Props) {
+  const [email, setEmail] = useState('');
   const [token, setToken] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<'join' | 'claim' | undefined>();
   const [failure, setFailure] = useState<string | undefined>();
-  const [showNote, setShowNote] = useState(false);
+
+  /**
+   * Careers admits anyone. Kormic Student is the invitation corridor, where a
+   * university hands over a list; here the person is the supply side and
+   * gating who may exist would gate the thing a practice pays to see. So this
+   * is the primary path, and the invitation below is the secondary one for
+   * when a practice or a staffing partner does bring a roster.
+   *
+   * No session is minted here on either path. The person leaves with a code on
+   * its way and the session arrives one screen later, which is what keeps the
+   * old empty-session dead end shut.
+   */
+  async function startJoin() {
+    const address = email.trim();
+    if (!address) return;
+    setBusy('join');
+    setFailure(undefined);
+    try {
+      const result = await services.signup.start(address);
+      dispatch({ type: 'SET_ENTRY_MODE', mode: 'signup' });
+      dispatch({ type: 'SET_SIGNUP', signup: { email: result.email, codeSent: true } });
+      dispatch({ type: 'NEXT' });
+    } catch {
+      setFailure('We could not send a code just then. Check the address and try again.');
+    } finally {
+      setBusy(undefined);
+    }
+  }
 
   async function startClaim() {
     if (!token.trim()) return;
-    setBusy(true);
+    setBusy('claim');
     setFailure(undefined);
     try {
       const { maskedEmail } = await services.claim.start(token.trim());
@@ -53,13 +81,42 @@ export function EntryScreen({ state, dispatch, services }: Props) {
       // wrong. Telling them apart is how a roster gets enumerated.
       setFailure('We could not find that invitation. Check the link and try again.');
     } finally {
-      setBusy(false);
+      setBusy(undefined);
     }
   }
 
   return (
     <ScrollView contentContainerStyle={styles.screen}>
       <Text style={type.title}>How are you joining?</Text>
+
+      <View style={styles.card}>
+        <Text style={type.label}>Join</Text>
+        <Text style={type.caption}>
+          Give us an address and we will send you a code. Free, always.
+        </Text>
+        <TextInput
+          style={styles.input}
+          value={email}
+          onChangeText={setEmail}
+          placeholder="you@example.com"
+          placeholderTextColor={colors.muted}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          accessibilityLabel="Email address"
+        />
+        <Pressable
+          style={styles.primary}
+          onPress={startJoin}
+          disabled={busy !== undefined}
+          accessibilityRole="button"
+        >
+          {busy === 'join' ? (
+            <ActivityIndicator color={colors.ink} />
+          ) : (
+            <Text style={styles.primaryLabel}>Send me a code</Text>
+          )}
+        </Pressable>
+      </View>
 
       <View style={styles.card}>
         <Text style={type.label}>A practice invited me</Text>
@@ -73,18 +130,21 @@ export function EntryScreen({ state, dispatch, services }: Props) {
           autoCapitalize="none"
           accessibilityLabel="Invitation code"
         />
-        <Pressable style={styles.primary} onPress={startClaim} disabled={busy} accessibilityRole="button">
-          {busy ? <ActivityIndicator color={colors.ink} /> : <Text style={styles.primaryLabel}>Continue</Text>}
+        <Pressable
+          style={styles.primary}
+          onPress={startClaim}
+          disabled={busy !== undefined}
+          accessibilityRole="button"
+        >
+          {busy === 'claim' ? (
+            <ActivityIndicator color={colors.ink} />
+          ) : (
+            <Text style={styles.primaryLabel}>Continue</Text>
+          )}
         </Pressable>
-        {failure ? <Text style={styles.error}>{failure}</Text> : null}
       </View>
 
-      {/* No session is handed out here. There is nothing to sign up to yet,
-          and pretending otherwise is what made this a dead end. */}
-      <Pressable onPress={() => setShowNote(true)} accessibilityRole="button">
-        <Text style={styles.link}>I do not have a code</Text>
-      </Pressable>
-      {showNote ? <Text style={styles.note}>{invitationOnlyNote}</Text> : null}
+      {failure ? <Text style={styles.error}>{failure}</Text> : null}
     </ScrollView>
   );
 }
@@ -149,6 +209,88 @@ export function ClaimCodeScreen({ state, dispatch, services }: Props) {
         accessibilityRole="button"
       >
         {busy ? <ActivityIndicator color={colors.ink} /> : <Text style={styles.primaryLabel}>Verify</Text>}
+      </Pressable>
+    </View>
+  );
+}
+
+// --- JoinCode -------------------------------------------------------------
+
+/**
+ * The signup path's code screen. Same discipline as the claim one, with one
+ * deliberate difference: the address is shown in full because the person just
+ * typed it, and it is not pinned afterwards, because on this path nobody else
+ * asserted it. A wrong code and an unknown address read identically, so this
+ * door cannot be used to find out who already has an account.
+ */
+export function JoinCodeScreen({ state, dispatch, services }: Props) {
+  const [code, setCode] = useState('');
+  const [attempts, setAttempts] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | undefined>();
+
+  async function verify() {
+    const address = state.signup?.email;
+    if (!isCodeWellFormed(code) || !address) return;
+    setBusy(true);
+    setFailure(undefined);
+    try {
+      const session = await services.signup.verify(address, code.trim());
+      dispatch({ type: 'SET_AUTH_SESSION', session });
+      dispatch({ type: 'NEXT' });
+    } catch {
+      setAttempts((current) => current + 1);
+      setFailure(claimError('bad_code'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resend() {
+    const address = state.signup?.email;
+    if (!address) return;
+    setFailure(undefined);
+    try {
+      await services.signup.start(address);
+      setAttempts(0);
+      setCode('');
+    } catch {
+      setFailure('We could not send another code just then.');
+    }
+  }
+
+  return (
+    <View style={styles.screen}>
+      <Text style={type.title}>Check your email</Text>
+      <Text style={type.body}>
+        We sent a {CODE_LENGTH}-digit code to {state.signup?.email ?? 'your address'}.
+      </Text>
+
+      <TextInput
+        style={[styles.input, styles.code]}
+        value={code}
+        onChangeText={setCode}
+        placeholder="000000"
+        placeholderTextColor={colors.muted}
+        keyboardType="number-pad"
+        maxLength={CODE_LENGTH}
+        accessibilityLabel="Verification code"
+      />
+
+      {failure ? <Text style={styles.error}>{failure}</Text> : null}
+      {attemptsLine(attempts) ? <Text style={type.caption}>{attemptsLine(attempts)}</Text> : null}
+
+      <Pressable
+        style={[styles.primary, (!isCodeWellFormed(code) || busy) && styles.disabled]}
+        onPress={verify}
+        disabled={!isCodeWellFormed(code) || busy}
+        accessibilityRole="button"
+      >
+        {busy ? <ActivityIndicator color={colors.ink} /> : <Text style={styles.primaryLabel}>Verify</Text>}
+      </Pressable>
+
+      <Pressable onPress={resend} accessibilityRole="button">
+        <Text style={styles.link}>Send another code</Text>
       </Pressable>
     </View>
   );

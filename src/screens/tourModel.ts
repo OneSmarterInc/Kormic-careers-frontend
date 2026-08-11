@@ -1,4 +1,4 @@
-import { CorridorConfig, applicableRungs } from '../models/corridor';
+import { CorridorConfig, applicableRungs, awaitsPractice, runsOnJoin } from '../models/corridor';
 
 /**
  * The tour before signup. Every stop is derived from the corridor the person is
@@ -20,8 +20,12 @@ export function buildTour(corridor: CorridorConfig | undefined): TourStop[] {
   const rungs = applicableRungs(corridor);
   const required = rungs.filter((rung) => rung.requirement === 'required');
   const optional = rungs.filter((rung) => rung.requirement === 'optional');
-  const checked = rungs.filter((rung) => Boolean(rung.verifier));
-  const unchecked = rungs.filter((rung) => !rung.verifier);
+  // Split by what actually happens rather than by whether a bot exists. A rung
+  // whose authority charges is not confirmed when you join, and telling a
+  // joining candidate otherwise promises something they do not control.
+  const checked = rungs.filter(runsOnJoin);
+  const held = rungs.filter(awaitsPractice);
+  const unchecked = rungs.filter((rung) => !runsOnJoin(rung) && !awaitsPractice(rung));
 
   const stops: TourStop[] = [
     {
@@ -37,16 +41,17 @@ export function buildTour(corridor: CorridorConfig | undefined): TourStop[] {
     },
   ];
 
-  if (checked.length > 0) {
+  if (checked.length > 0 || held.length > 0) {
     stops.push({
       key: 'checked',
-      heading: 'What we check, and what we do not',
+      heading: 'What we check, and when',
       body:
-        unchecked.length > 0
-          ? 'Some of these we confirm against the body that issued them. The rest are what you tell us, and they are shown to practices that way.'
+        held.length > 0
+          ? 'Some of these we confirm as soon as you give them to us. Others cost money to confirm with the body that issued them, so a practice decides that when they take you forward. Until then they are shown as what you told us.'
           : 'We confirm each of these against the body that issued it.',
       items: [
-        ...checked.map((rung) => `${rung.displayName}: we check it`),
+        ...checked.map((rung) => `${rung.displayName}: we check it now`),
+        ...held.map((rung) => `${rung.displayName}: checked if a practice takes you forward`),
         ...unchecked.map((rung) => `${rung.displayName}: you tell us`),
       ],
     });

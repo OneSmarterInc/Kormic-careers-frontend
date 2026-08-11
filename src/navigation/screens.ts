@@ -9,6 +9,7 @@ export type ScreenKey =
   | 'welcome'
   | 'tour'
   | 'entry'
+  | 'joinCode'
   | 'claimCode'
   | 'basicInfo'
   | 'rung'
@@ -26,6 +27,8 @@ export function screenFor(route: Route): ScreenKey {
       return 'tour';
     case 'Entry':
       return 'entry';
+    case 'JoinCode':
+      return 'joinCode';
     case 'ClaimCode':
       return 'claimCode';
     case 'BasicInfo':
@@ -55,6 +58,7 @@ export const implementedScreens: ScreenKey[] = [
   'welcome',
   'tour',
   'entry',
+  'joinCode',
   'claimCode',
   'basicInfo',
   'rung',

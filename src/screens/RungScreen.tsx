@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { CorridorRung, findRung } from '../models/corridor';
+import { CorridorRung, findRung, runsOnJoin } from '../models/corridor';
 import { CandidateState, claimsForRung, rungKeyOf } from '../models/onboarding';
 import { CandidateAction } from '../state/candidateReducer';
 import { CandidateServices } from '../services/candidateServices';
@@ -185,7 +185,10 @@ export function RungScreen({ state, dispatch, services }: Props) {
         dispatch({ type: 'RECORD_CLAIM', claim });
       }
 
-      if (rung.verifier) dispatch({ type: 'SET_RUNG_STATE', key, state: 'checking' });
+      // Only a rung that actually runs on join goes to checking. A rung whose
+      // authority charges stays submitted, because nothing is happening to it
+      // until a practice decides to pay, and a spinner would say otherwise.
+      if (runsOnJoin(rung)) dispatch({ type: 'SET_RUNG_STATE', key, state: 'checking' });
       dispatch({ type: 'NEXT' });
     } catch {
       setFailure('That did not save. Check your connection and try again.');

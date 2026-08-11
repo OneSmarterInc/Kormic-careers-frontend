@@ -5,6 +5,7 @@ export type FrameRoute =
   | 'Welcome'
   | 'Tour' // what the ladder will ask, shown before anyone signs on
   | 'Entry' // signup or claim, chosen here
+  | 'JoinCode' // signup path: prove control of the address the person gave
   | 'ClaimCode' // claim path only: prove control of the listed address
   | 'BasicInfo'
   | 'BuildingAgent'
@@ -54,6 +55,16 @@ export interface Person {
   country: string;
 }
 
+/**
+ * The open path. Careers is not an invitation corridor: anyone may join, and
+ * the practice pays to hire rather than to gate who exists. This holds the
+ * address between asking for a code and proving it.
+ */
+export interface SignupSession {
+  email: string;
+  codeSent: boolean;
+}
+
 export interface ClaimSession {
   /** Masked until the code is verified. Nothing else is revealed before that. */
   maskedEmail: string;
@@ -80,6 +91,7 @@ export interface CandidateState {
   corridor?: CorridorConfig;
   corridorError?: string;
   entryMode?: EntryMode;
+  signup?: SignupSession;
   claim?: ClaimSession;
   authSession?: AuthSession;
   person: Person;

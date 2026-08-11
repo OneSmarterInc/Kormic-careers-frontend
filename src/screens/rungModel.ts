@@ -1,4 +1,10 @@
-import { CorridorRung, VerificationClaim, methodLabels } from '../models/corridor';
+import {
+  CorridorRung,
+  VerificationClaim,
+  awaitsPractice,
+  methodLabels,
+  runsOnJoin,
+} from '../models/corridor';
 import { RungProgress, RungState } from '../models/onboarding';
 
 /**
@@ -144,8 +150,15 @@ export function statusLine(
   if (state === 'skipped') {
     return 'Skipped. You can add this later from your profile.';
   }
-  if (state === 'checking' || (state === 'submitted' && rung.verifier)) {
+  if (state === 'checking' || (state === 'submitted' && runsOnJoin(rung))) {
     return 'Checking this now. You can carry on; we will tell you when it comes back.';
+  }
+  if (state === 'submitted' && awaitsPractice(rung)) {
+    // The honest third state. A verifier exists for this rung and nothing is
+    // running, because confirming it against the authority costs money and
+    // that is a practice's decision, not ours and not the candidate's. Saying
+    // "checking" here would be a lie about the most common state in the app.
+    return 'Saved. A practice can have this confirmed when they take you forward.';
   }
   if (state === 'submitted') {
     return 'Saved. Nobody has checked this yet.';

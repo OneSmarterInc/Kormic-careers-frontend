@@ -14,6 +14,19 @@ export type RungInput =
   | 'document_upload'
   | 'screenshots';
 
+/**
+ * Whether reaching this rung's authority costs money.
+ *
+ * 'free' runs on its own when the person joins, because there is no decision to
+ * make about spending nothing. 'paid' waits until a hiring human ticks that
+ * person, since anything costing money is the client's decision. 'none' means
+ * no programmatic route exists, so the claim stays where the person left it.
+ *
+ * Undefined means nobody has established the cost yet, and it behaves as
+ * 'none'. A rung whose cost is unknown must never look free.
+ */
+export type VerificationRoute = 'free' | 'paid' | 'none';
+
 export interface CorridorRung {
   key: RungKey;
   displayName: string;
@@ -21,6 +34,7 @@ export interface CorridorRung {
   input: RungInput;
   /** Which helper bot services this rung, if any. Undefined means self-attested only. */
   verifier?: string;
+  route?: VerificationRoute;
   order: number;
 }
 
@@ -69,6 +83,20 @@ export function applicableRungs(corridor: CorridorConfig): CorridorRung[] {
   return corridor.rungs
     .filter((rung) => rung.requirement !== 'not_applicable')
     .sort((a, b) => a.order - b.order);
+}
+
+/**
+ * Whether anything will happen to this rung without a practice paying. Used by
+ * the app to decide whether a submitted rung is genuinely being checked or is
+ * simply held, which are different things and must read differently.
+ */
+export function runsOnJoin(rung: CorridorRung): boolean {
+  return rung.route === 'free' && Boolean(rung.verifier);
+}
+
+/** Whether a practice could pay to have this confirmed later. */
+export function awaitsPractice(rung: CorridorRung): boolean {
+  return rung.route === 'paid';
 }
 
 export function findRung(corridor: CorridorConfig, key: RungKey): CorridorRung | undefined {

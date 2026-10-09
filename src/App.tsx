@@ -212,8 +212,8 @@ export default function App({
       {/* Header and content share the same responsive viewport gutters. */}
       <View style={[styles.chrome, { paddingHorizontal: viewport.width < 600 ? spacing.md : layout.gutter }]}>
         <View style={[styles.chromeColumn, { maxWidth: screenWidth(state.route) }]}>
-          <Text style={styles.brand}>Kormic <Text style={type.caption}>Careers</Text></Text>
-          {previous || progress ? <View style={styles.header}>
+          <View style={styles.header}>
+            <Text style={styles.brand}>Kormic <Text style={type.caption}>Careers</Text></Text>
             {previous ? (
               <Pressable
                 onPress={() => dispatch({ type: 'BACK' })}
@@ -222,15 +222,9 @@ export default function App({
               >
                 <Text style={styles.back}>← Back</Text>
               </Pressable>
-            ) : (
-              <View />
-            )}
-            {progress ? (
-              <Text style={type.caption}>
-                Step {progress.current} of {progress.total}
-              </Text>
             ) : null}
-          </View> : null}
+          </View>
+          {progress ? <Text style={[type.caption, styles.step]}>Step {progress.current} of {progress.total}</Text> : null}
 
           {progress ? (
             <View style={styles.track} accessibilityRole="progressbar">
@@ -320,7 +314,7 @@ export default function App({
 }
 
 const styles = StyleSheet.create({
-  brand: { ...type.bodyStrong, fontSize: 21, marginBottom: spacing.sm },
+  brand: { ...type.bodyStrong, fontSize: 21 },
   root: { flex: 1, backgroundColor: colors.ink },
   chrome: { alignItems: 'center', paddingTop: spacing.md, paddingBottom: spacing.xs, paddingHorizontal: layout.gutter },
   chromeColumn: { width: '100%' },
@@ -328,10 +322,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.xxs,
     minHeight: 52,
   },
-  backHit: { paddingVertical: spacing.xs, paddingRight: spacing.md, marginLeft: -spacing.xxs },
+  step: { marginTop: spacing.xs, marginBottom: spacing.sm },
+  backHit: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.sm, borderRadius: radii.sm, borderWidth: 1, borderColor: colors.line },
   backPressed: { opacity: 0.6 },
   back: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: colors.coral },
   disabled: { color: colors.muted },

@@ -1,7 +1,7 @@
 import React, { useReducer } from 'react';
 import { candidateReducer } from '../src/state/candidateReducer';
 import { Platform, Text, TextInput } from 'react-native';
-import { EntryScreen, BasicInfoScreen } from '../src/screens/EntryScreens';
+import { EntryScreen, BasicInfoScreen, JoinCodeScreen, ClaimCodeScreen } from '../src/screens/EntryScreens';
 import { ChatScreen } from '../src/screens/ChatScreen';
 import { ProfileScreen } from '../src/screens/ProfileScreen';
 import { Button } from '../src/ui';
@@ -15,6 +15,26 @@ const { act, create } = require('react-test-renderer');
 describe('theme interaction regressions', () => {
   let tree: ReturnType<typeof create>;
   afterEach(async () => { if (tree) await act(async () => tree.unmount()); });
+  it.each(['signup', 'claim'] as const)('submits %s codes on Enter without duplicate requests and allows retry', async (mode) => {
+    const verify = jest.fn().mockRejectedValue(new Error('invalid code'));
+    const dispatch = jest.fn();
+    const state = { ...initialCandidateState, signup: { email: 'test@example.com', codeSent: true }, claim: { token: 'invite', maskedEmail: 't***@example.com', verified: false } };
+    const services = { ...mockCandidateServices, [mode]: { ...mockCandidateServices[mode], verify } };
+    const Component = mode === 'signup' ? JoinCodeScreen : ClaimCodeScreen;
+    await act(async () => { tree = create(<Component state={state} dispatch={dispatch} services={services} />); });
+    await act(async () => tree.root.findByType(TextInput).props.onSubmitEditing());
+    expect(verify).not.toHaveBeenCalled();
+    await act(async () => tree.root.findByType(TextInput).props.onChangeText('123456'));
+    await act(async () => {
+      const submit = tree.root.findByType(TextInput).props.onSubmitEditing;
+      submit();
+      submit();
+    });
+    expect(verify).toHaveBeenCalledTimes(1);
+    expect(dispatch).not.toHaveBeenCalled();
+    await act(async () => tree.root.findByType(TextInput).props.onSubmitEditing());
+    expect(verify).toHaveBeenCalledTimes(2);
+  });
   it('opens invitation entry without starting authentication', async () => {
     const start = jest.fn();
     function EntryHarness() {

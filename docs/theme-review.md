@@ -162,3 +162,12 @@ explanatory text is condensed; the full consent statement, privacy note, human
 review disclosure and validation remain. TypeScript, 197 tests and web export
 passed. Browser checks confirmed aligned desktop inputs and stacked mobile inputs
 with no horizontal overflow or page errors; the rendered desktop layout was reviewed.
+
+### Compact upload screen and verification keyboard submission
+
+- Moved Back into the brand header row with a 44px minimum target; progress remains below it. Existing history behavior is unchanged.
+- Screenshot selection now uses a thumbnail/count badge, selection summary, and adjacent Add more on desktop. Mobile stacks controls. Continue and Skip share a compact desktop action row; the review dialog retains individual removal.
+- Both email and invitation code fields submit the existing verification handler on Enter. A synchronous request lock prevents repeated Enter/click submissions; signup resend shares the lock. Invalid codes and failed requests never advance.
+- Validation: typecheck, 199 tests in seven suites, web export, and diff whitespace checks passed. Lint has only the two existing duplicate-import warnings in ladder.test.ts.
+- Chromium at 390px and 1440px: real file chooser with test image files, count badge, review/remove, Back, no overflow or runtime errors. API interception checked both Enter verification requests and duplicate suppression with rejected responses. An initial browser test used an unavailable profile button label; the corrected test navigated directly to the credential route and passed.
+- Live backend OTP acceptance/upload persistence and physical native devices were not tested. No backend, deployment, API contract, or mock configuration changes.

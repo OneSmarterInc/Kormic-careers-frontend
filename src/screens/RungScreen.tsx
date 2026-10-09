@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import {
   Body,
   Button,
@@ -46,6 +46,7 @@ interface Props {
  * shape and renders accordingly, and it knows the name of no credential.
  */
 export function RungScreen({ state, dispatch, services }: Props) {
+  const wide = useWindowDimensions().width >= 600;
   const key = rungKeyOf(state.route);
   const rung: CorridorRung | undefined = key && state.corridor ? findRung(state.corridor, key) : undefined;
   const progress = key ? state.rungs[key] : undefined;
@@ -321,18 +322,26 @@ export function RungScreen({ state, dispatch, services }: Props) {
 
       {rung.input === 'screenshots' ? (
         <Card>
-          <Eyebrow>
-            {(draft.attachments?.length ?? 0) === 0
-              ? 'Nothing added yet'
-              : `${draft.attachments?.length} added`}
-          </Eyebrow>
           {draft.attachments?.length ? (
-            <Pressable accessibilityRole="button" accessibilityLabel={`Review ${draft.attachments.length} selected photos`} onPress={() => setReviewingPhotos(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-              <PhotoPreview file={draft.attachments[0]!} />
-              {draft.attachments.length > 1 ? <Text style={type.heading}>+{draft.attachments.length - 1}</Text> : null}
-              <Text style={type.caption}>Review photos</Text>
-            </Pressable>
-          ) : null}
+            <View style={[styles.photoSummary, wide && styles.photoSummaryWide]}>
+              <Pressable accessibilityRole="button" accessibilityLabel={`Review ${draft.attachments.length} selected photos`} disabled={busy} onPress={() => setReviewingPhotos(true)} style={styles.photoReview}>
+                <View style={styles.previewStack}>
+                  <PhotoPreview file={draft.attachments[0]!} />
+                  {draft.attachments.length > 1 ? <View style={styles.photoCount}><Text style={styles.photoCountText}>+{draft.attachments.length - 1}</Text></View> : null}
+                </View>
+                <View style={styles.photoCopy}>
+                  <Text style={type.bodyStrong}>{draft.attachments.length} {draft.attachments.length === 1 ? 'screenshot' : 'screenshots'} selected</Text>
+                  <Text style={type.caption}>Review or remove photos</Text>
+                </View>
+              </Pressable>
+              <Button label="Add more" variant="secondary" block={false} disabled={busy} onPress={addScreenshots} />
+            </View>
+          ) : (
+            <View style={styles.emptyPhotos}>
+              <Eyebrow>Add screenshots</Eyebrow>
+              <Caption>Choose images that show your profile. You can add multiple screenshots.</Caption>
+            </View>
+          )}
           <Modal visible={reviewingPhotos} transparent animationType="fade" onRequestClose={() => setReviewingPhotos(false)}>
             <View style={{ flex: 1, backgroundColor: '#00000066', justifyContent: 'center', padding: spacing.lg }}>
               <View style={{ backgroundColor: colors.panel, borderRadius: radii.card, padding: spacing.lg, maxHeight: '85%', width: '100%', maxWidth: 600, alignSelf: 'center', gap: spacing.md }}>
@@ -353,13 +362,7 @@ export function RungScreen({ state, dispatch, services }: Props) {
               </View>
             </View>
           </Modal>
-          {(draft.attachments?.length ?? 0) > 0 ? (
-            <Button label="Add more" variant="quiet" onPress={addScreenshots} />
-          ) : (
-            <Caption>
-              A profile rarely fits in one image. Add as many as it takes to show the whole thing.
-            </Caption>
-          )}
+
         </Card>
       ) : null}
 
@@ -367,11 +370,14 @@ export function RungScreen({ state, dispatch, services }: Props) {
       {fields.length === 0 && validationError ? <ErrorText>{validationError}</ErrorText> : null}
       {failure ? <ErrorText>{failure}</ErrorText> : null}
 
-      <Button label={primaryActionLabel(rung, progress, draft)} onPress={handlePrimary} busy={busy} />
+      <View style={[styles.actions, wide && styles.actionsWide]}>
+      <View style={wide ? styles.primaryAction : undefined}><Button label={primaryActionLabel(rung, progress, draft)} onPress={handlePrimary} busy={busy} /></View>
 
       {canSkip(rung) ? (
         <Button
           label="Skip for now"
+          block={false}
+          disabled={busy}
           variant="quiet"
           onPress={() => {
             dispatch({ type: 'SKIP_RUNG', key });
@@ -379,11 +385,23 @@ export function RungScreen({ state, dispatch, services }: Props) {
           }}
         />
       ) : null}
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  photoSummary: { gap: spacing.md },
+  photoSummaryWide: { flexDirection: 'row', alignItems: 'center' },
+  photoReview: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1, minWidth: 0 },
+  photoCopy: { flex: 1, gap: spacing.xxs },
+  previewStack: { width: 72, height: 72 },
+  photoCount: { position: 'absolute', right: -4, bottom: -4, backgroundColor: colors.coral, borderRadius: radii.pill, paddingHorizontal: 8, paddingVertical: 4 },
+  photoCountText: { ...type.bodyStrong, color: colors.panel, fontSize: 13 },
+  emptyPhotos: { gap: spacing.sm },
+  actions: { gap: spacing.sm },
+  actionsWide: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  primaryAction: { width: 240 },
   attachment: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -404,5 +422,5 @@ function PhotoPreview({ file }: { file: PickedFile }) {
     setUri(file.uri);
   }, [file]);
   return uri ? <Image source={{ uri }} accessibilityLabel={file.name} style={{ width: 72, height: 72, borderRadius: radii.sm }} />
-    : <Text style={[type.caption, { width: 72 }]} numberOfLines={3}>{file.name}</Text>;
+    : <View style={{ width: 72, height: 72, padding: spacing.xs, borderRadius: radii.sm, backgroundColor: colors.ink, justifyContent: 'center' }}><Text style={[type.caption, { fontSize: 11 }]} numberOfLines={3}>{file.name}</Text></View>;
 }

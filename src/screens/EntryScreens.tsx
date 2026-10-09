@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Body, Button, Caption, Card, CheckField, DateField, ErrorText, Eyebrow, Field, Screen, Title } from '../ui';
 import {
@@ -152,13 +152,15 @@ export function EntryScreen({ state, dispatch, services }: Props) {
 // --- ClaimCode ------------------------------------------------------------
 
 export function ClaimCodeScreen({ state, dispatch, services }: Props) {
+  const requestLock = useRef(false);
   const [code, setCode] = useState('');
   const [attempts, setAttempts] = useState(0);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
 
   async function verify() {
-    if (!isCodeWellFormed(code) || !state.claim?.token) return;
+    if (requestLock.current || !isCodeWellFormed(code) || !state.claim?.token) return;
+    requestLock.current = true;
     setBusy(true);
     setFailure(undefined);
     try {
@@ -175,6 +177,7 @@ export function ClaimCodeScreen({ state, dispatch, services }: Props) {
       setAttempts((current) => current + 1);
       setFailure(claimError('bad_code'));
     } finally {
+      requestLock.current = false;
       setBusy(false);
     }
   }
@@ -200,6 +203,8 @@ export function ClaimCodeScreen({ state, dispatch, services }: Props) {
         placeholder="000000"
         keyboardType="number-pad"
         maxLength={CODE_LENGTH}
+        returnKeyType="done"
+        onSubmitEditing={() => { void verify(); }}
         accessibilityLabel="Verification code"
         style={styles.code}
         error={failure}
@@ -222,6 +227,7 @@ export function ClaimCodeScreen({ state, dispatch, services }: Props) {
  * door cannot be used to find out who already has an account.
  */
 export function JoinCodeScreen({ state, dispatch, services }: Props) {
+  const requestLock = useRef(false);
   const [code, setCode] = useState('');
   const [attempts, setAttempts] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -229,7 +235,8 @@ export function JoinCodeScreen({ state, dispatch, services }: Props) {
 
   async function verify() {
     const address = state.signup?.email;
-    if (!isCodeWellFormed(code) || !address) return;
+    if (requestLock.current || !isCodeWellFormed(code) || !address) return;
+    requestLock.current = true;
     setBusy(true);
     setFailure(undefined);
     try {
@@ -245,13 +252,16 @@ export function JoinCodeScreen({ state, dispatch, services }: Props) {
       setAttempts((current) => current + 1);
       setFailure(claimError('bad_code'));
     } finally {
+      requestLock.current = false;
       setBusy(false);
     }
   }
 
   async function resend() {
     const address = state.signup?.email;
-    if (!address) return;
+    if (requestLock.current || !address) return;
+    requestLock.current = true;
+    setBusy(true);
     setFailure(undefined);
     try {
       await services.signup.start(address);
@@ -259,6 +269,9 @@ export function JoinCodeScreen({ state, dispatch, services }: Props) {
       setCode('');
     } catch {
       setFailure('We could not send another code just then.');
+    } finally {
+      requestLock.current = false;
+      setBusy(false);
     }
   }
 
@@ -279,6 +292,8 @@ export function JoinCodeScreen({ state, dispatch, services }: Props) {
         placeholder="000000"
         keyboardType="number-pad"
         maxLength={CODE_LENGTH}
+        returnKeyType="done"
+        onSubmitEditing={() => { void verify(); }}
         accessibilityLabel="Verification code"
         style={styles.code}
         error={failure}
@@ -292,7 +307,7 @@ export function JoinCodeScreen({ state, dispatch, services }: Props) {
         busy={busy}
         disabled={!isCodeWellFormed(code)}
       />
-      <Button label="Send another code" onPress={resend} variant="quiet" />
+      <Button label="Send another code" disabled={busy} onPress={resend} variant="quiet" />
     </Screen>
   );
 }

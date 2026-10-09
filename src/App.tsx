@@ -1,6 +1,6 @@
 import { pointFromUrl } from './navigation/paths';
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, useWindowDimensions, Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { Fraunces_600SemiBold, Fraunces_600SemiBold_Italic } from '@expo-google-fonts/fraunces';
@@ -27,7 +27,7 @@ import {
   WelcomeScreen,
 } from './screens/EntryScreens';
 import { candidateReducer } from './state/candidateReducer';
-import { colors, layout, pointer, radii, spacing, type } from './theme/tokens';
+import { colors, layout, screenWidth, pointer, radii, spacing, type } from './theme/tokens';
 
 interface Props {
   services?: CandidateServices;
@@ -43,6 +43,7 @@ export default function App({
   registerSessionLost,
   navigationScope = `careers:${corridorKey}:${services === mockCandidateServices ? 'mock' : 'live'}`,
 }: Props) {
+  const viewport = useWindowDimensions();
   const [state, rawDispatch] = useReducer(candidateReducer, initialCandidateState);
   const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState(true);
@@ -209,10 +210,10 @@ export default function App({
     <SafeAreaView style={styles.root}>
       <StatusBar style="dark" />
       {/* Header and content share the same responsive viewport gutters. */}
-      <View style={styles.chrome}>
-        <View style={styles.chromeColumn}>
+      <View style={[styles.chrome, { paddingHorizontal: viewport.width < 600 ? spacing.md : layout.gutter }]}>
+        <View style={[styles.chromeColumn, { maxWidth: screenWidth(state.route) }]}>
           <Text style={styles.brand}>Kormic <Text style={type.caption}>Careers</Text></Text>
-          <View style={styles.header}>
+          {previous || progress ? <View style={styles.header}>
             {previous ? (
               <Pressable
                 onPress={() => dispatch({ type: 'BACK' })}
@@ -229,7 +230,7 @@ export default function App({
                 Step {progress.current} of {progress.total}
               </Text>
             ) : null}
-          </View>
+          </View> : null}
 
           {progress ? (
             <View style={styles.track} accessibilityRole="progressbar">
@@ -321,7 +322,7 @@ export default function App({
 const styles = StyleSheet.create({
   brand: { ...type.bodyStrong, fontSize: 21, marginBottom: spacing.sm },
   root: { flex: 1, backgroundColor: colors.ink },
-  chrome: { alignItems: 'center', paddingHorizontal: layout.gutter },
+  chrome: { alignItems: 'center', paddingTop: spacing.md, paddingBottom: spacing.xs, paddingHorizontal: layout.gutter },
   chromeColumn: { width: '100%' },
   header: {
     flexDirection: 'row',

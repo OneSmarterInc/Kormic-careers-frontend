@@ -12,7 +12,7 @@ import {
 } from '../models/onboarding';
 import { CandidateServices } from '../services/candidateServices';
 import { CandidateAction } from '../state/candidateReducer';
-import { colors, fonts, spacing, type } from '../theme/tokens';
+import { colors, fonts, layout, radii, spacing, type } from '../theme/tokens';
 import { CODE_LENGTH, attemptsLine, claimError, isCodeWellFormed, joinOrSignInNote } from './claimModel';
 import { stepCountLine } from './tourModel';
 import { routeAfterSignIn } from '../navigation/routes';
@@ -27,7 +27,7 @@ interface Props {
 
 export function WelcomeScreen({ state, dispatch }: Omit<Props, 'services'>) {
   return (
-    <Screen centred>
+    <Screen contentWidth={layout.welcome}>
       <View style={styles.hero}>
         <Text style={styles.logo}>Kormic</Text>
         <Text accessibilityRole="header" style={styles.heroTitle}>Your agent{'\n'}<Text style={styles.accent}>starts here.</Text></Text>
@@ -98,7 +98,7 @@ export function EntryScreen({ state, dispatch, services }: Props) {
   }
 
   return (
-    <Screen>
+    <Screen contentWidth={layout.compact}>
       <Title>{invitation ? 'Claim your invitation.' : 'Let’s get you started.'}</Title>
       {!invitation ? (<>
 
@@ -180,13 +180,13 @@ export function ClaimCodeScreen({ state, dispatch, services }: Props) {
   }
 
   if (state.claim?.verified) return (
-    <Screen centred><Title>Email confirmed</Title><Body>Your invitation email has already been confirmed.</Body>
+    <Screen centred contentWidth={layout.compact}><Title>Email confirmed</Title><Body>Your invitation email has already been confirmed.</Body>
       <Button label="Continue" onPress={() => dispatch({ type: 'NAVIGATE', route: 'BasicInfo' })} />
     </Screen>
   );
 
   return (
-    <Screen centred>
+    <Screen centred contentWidth={layout.compact}>
       <Title>Check your email</Title>
       {/* The masked address is the only thing this screen may show before the
           code verifies. Nothing about the practice, the list, or the person. */}
@@ -263,13 +263,13 @@ export function JoinCodeScreen({ state, dispatch, services }: Props) {
   }
 
   if (state.authSession) return (
-    <Screen centred><Title>Email confirmed</Title><Body>Your email has already been confirmed for this session.</Body>
+    <Screen centred contentWidth={layout.compact}><Title>Email confirmed</Title><Body>Your email has already been confirmed for this session.</Body>
       <Button label="Continue" onPress={() => dispatch({ type: 'NAVIGATE', route: 'BasicInfo' })} />
     </Screen>
   );
 
   return (
-    <Screen centred>
+    <Screen centred contentWidth={layout.compact}>
       <Title>Check your email</Title>
       <Body>We sent a {CODE_LENGTH}-digit code to {state.signup?.email ?? 'your address'}.</Body>
 
@@ -462,7 +462,7 @@ export function BasicInfoScreen({ state, dispatch, services }: Props) {
   }
 
   return (
-    <Screen wide>
+    <Screen contentWidth={layout.form}>
       <Title>About you</Title>
       <Caption>This is what a practice sees alongside what was checked.</Caption>
 
@@ -491,18 +491,18 @@ export function BasicInfoScreen({ state, dispatch, services }: Props) {
 
       {failure ? <ErrorText>{failure}</ErrorText> : null}
 
-      <Button
+      <View style={{ width: '100%', maxWidth: wide ? 260 : undefined, alignSelf: 'flex-end', marginTop: spacing.sm }}><Button
         label="Continue"
         onPress={handleContinue}
         busy={busy}
-      />
+      /></View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  hero: { gap: spacing.md, paddingVertical: spacing.xl },
-  logo: { ...type.bodyStrong, fontSize: 28, textAlign: 'center', marginBottom: spacing.xl },
+  hero: { width: '100%', maxWidth: 580, alignSelf: 'center', gap: spacing.md, paddingVertical: spacing.lg },
+  logo: { ...type.bodyStrong, fontSize: 28, textAlign: 'center', marginBottom: spacing.md },
   heroTitle: { ...type.display, textAlign: 'center', letterSpacing: -1.2 },
   accent: { fontFamily: fonts.accent, color: colors.coral },
   heroBody: { ...type.body, textAlign: 'center', fontSize: 17, lineHeight: 28, marginBottom: spacing.lg },
@@ -515,5 +515,5 @@ const styles = StyleSheet.create({
   code: { fontSize: 24, letterSpacing: 8, textAlign: 'center' },
   // Set apart from the contact fields, because these are asked for a different
   // reason and the reason is stated above them.
-  identity: { marginTop: spacing.lg },
+  identity: { marginTop: spacing.sm, gap: spacing.sm, padding: spacing.md, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.line, borderRadius: radii.card },
 });

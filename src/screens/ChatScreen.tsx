@@ -167,12 +167,13 @@ export function ChatScreen({ state, services, pollMs = 15000, onVisibilityChange
 }
 
 const styles = StyleSheet.create({
-  heading: { width: '100%', alignSelf: 'center', padding: spacing.lg, gap: spacing.xs },
+  heading: { width: '100%', maxWidth: layout.chat, alignSelf: 'center', padding: spacing.lg, gap: spacing.xs },
   screen: { flex: 1, minHeight: 0, overflow: 'hidden', backgroundColor: colors.ink },
   thread: {
     padding: layout.gutter,
     gap: spacing.sm,
     width: '100%',
+    maxWidth: layout.chat,
     alignSelf: 'center',
   },
   bubble: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, borderRadius: radii.card, maxWidth: '86%', gap: spacing.xs },
@@ -203,6 +204,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.line,
     width: '100%',
+    maxWidth: layout.chat,
     alignSelf: 'center',
   },
   input: {

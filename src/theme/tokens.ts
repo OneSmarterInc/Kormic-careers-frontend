@@ -33,9 +33,15 @@ export const spacing = { xxs: 4, xs: 6, sm: 10, md: 16, lg: 24, xl: 32, xxl: 48 
 
 export const radii = { sm: 8, input: 12, card: 22, pill: 999 };
 
-/** Shared viewport gutters; dialogs keep their own readable width. */
+/** Widths follow the task: focused input, structured forms, profile, conversation. */
 export const layout = {
   gutter: spacing.lg,
+  compact: 520,
+  content: 680,
+  welcome: 760,
+  form: 920,
+  profile: 1080,
+  chat: 880,
 };
 
 export const fonts = {
@@ -87,3 +93,12 @@ export const pointer = Platform.select<ViewStyle>({
   web: { cursor: 'pointer' } as ViewStyle,
   default: {},
 });
+
+export function screenWidth(route: string): number {
+  if (route === 'Welcome') return layout.welcome;
+  if (['Entry', 'JoinCode', 'ClaimCode'].includes(route)) return layout.compact;
+  if (route === 'BasicInfo') return layout.form;
+  if (route === 'Profile') return layout.profile;
+  if (route === 'Chat') return layout.chat;
+  return layout.content;
+}

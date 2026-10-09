@@ -137,3 +137,19 @@ repository, so production deep-link/refresh acceptance remains blocked on checki
 its fallback rules. No hosting settings, backend or deployment configuration were
 modified. Deployment changes require separate approval. Hosting under a URL
 subdirectory would also require an explicitly configured base path.
+
+## Balanced responsive widths (supersedes edge-to-edge content)
+
+Content now uses task-specific maximum widths: authentication 520px, onboarding
+680px, Welcome 760px (580px hero), personal details 920px, profile 1080px and
+chat 880px. Headers align with the corresponding content. Mobile uses 16px
+gutters; larger screens use 24px. Short screens follow a consistent top spacing
+instead of vertical centering, and unused header rows are omitted. Background
+checks have a distinct padded section, with a compact desktop Continue action.
+
+197 tests and TypeScript passed. Lint retains two pre-existing warnings. Web
+export passed. Browser checks at 390, 768, 1440 and 1920px verified profile,
+contact form, Welcome, sign-in, profile-building and long-chat layouts with no
+uncaught errors or horizontal overflow. Chat remains scrollable with a visible
+composer. Screenshots were inspected for desktop/mobile spacing and alignment.
+This is a presentation-only follow-up; APIs, routing and backend are unchanged.

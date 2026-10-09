@@ -11,6 +11,7 @@ import {
   TextInputProps,
   View,
   ViewStyle,
+  useWindowDimensions,
 } from 'react-native';
 import { colors, elevation, layout, pointer, radii, spacing, type } from '../theme/tokens';
 
@@ -31,22 +32,25 @@ interface ScreenProps {
   centred?: boolean;
   scroll?: boolean;
   wide?: boolean;
+  contentWidth?: number;
 }
 
-/** Responsive screens fill the available viewport with consistent gutters. */
-export function Screen({ children, centred = false, scroll = true, wide = false }: ScreenProps) {
+/** Task-sized content columns with responsive gutters and natural vertical flow. */
+export function Screen({ children, centred = false, scroll = true, wide = false, contentWidth }: ScreenProps) {
+  const { width } = useWindowDimensions();
+  const gutter = width < 600 ? spacing.md : layout.gutter;
   const column = (
-    <View style={[styles.column, wide && styles.columnWide, !scroll && styles.columnFill, centred && styles.columnCentred]}>{children}</View>
+    <View style={[styles.column, { maxWidth: contentWidth ?? (wide ? layout.profile : layout.content) }, !scroll && styles.columnFill, centred && styles.columnCentred]}>{children}</View>
   );
 
   if (!scroll) {
-    return <View style={[styles.page, styles.fixedPage, centred && styles.pageCentred]}>{column}</View>;
+    return <View style={[styles.page, styles.fixedPage, { paddingHorizontal: gutter }, centred && styles.pageCentred]}>{column}</View>;
   }
 
   return (
     <ScrollView
       style={styles.page}
-      contentContainerStyle={[styles.pageContent, centred && styles.pageCentred]}
+      contentContainerStyle={[styles.pageContent, { paddingHorizontal: gutter }, centred && styles.pageCentred]}
       keyboardShouldPersistTaps="handled"
     >
       {column}
@@ -537,8 +541,8 @@ export function StatusLine({
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.ink },
-  pageContent: { flexGrow: 1, alignItems: 'center', paddingHorizontal: layout.gutter, paddingVertical: spacing.lg },
-  pageCentred: { justifyContent: 'center', alignItems: 'center' },
+  pageContent: { flexGrow: 1, alignItems: 'center', paddingHorizontal: layout.gutter, paddingTop: spacing.xl, paddingBottom: spacing.xxl },
+  pageCentred: { justifyContent: 'flex-start', alignItems: 'center' },
   column: { width: '100%', gap: spacing.md },
   columnCentred: { gap: spacing.lg, justifyContent: 'center' },
   columnWide: { width: '100%' },

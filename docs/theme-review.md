@@ -82,3 +82,13 @@ Limitations:
 - Native hardware integration compiled, but no emulator/physical-device test ran.
 - Real email delivery, invitation redemption, uploads, authority checks, OAuth,
   and production chat still require backend-connected acceptance testing.
+
+## Sign-out landing correction
+
+Explicit sign-out returns to Welcome and clears the remembered introduction
+flag, so a fresh visit after sign-out also opens Welcome. Current-screen refresh
+recovery is unchanged. The reducer regression checks Welcome and empty history.
+All 183 tests and TypeScript passed; lint retained only the two existing warnings.
+Web export passed. Browser checks at 390px and 1440px with isolated API responses
+confirmed Welcome after sign-out, browser Back, refresh, and a fresh base-URL
+visit without the recovery snapshot; tokens and the introduction flag were cleared.

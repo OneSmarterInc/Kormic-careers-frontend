@@ -106,9 +106,8 @@ export default function App({
     return () => { cancelled = true; };
   }, [services, navigationScope, bootAttempt]);
 
-  // Reaching the door means the introduction has been given. Remembered on the
-  // device rather than in the session, so signing out does not make somebody a
-  // first-time visitor again.
+  // Reaching entry remembers the introduction for later visits. Explicit
+  // sign-out clears this flag so reopening the site returns to Welcome.
   useEffect(() => {
     if (state.route === 'Entry') void deviceMemory.rememberIntroSeen();
   }, [state.route]);
@@ -145,6 +144,8 @@ export default function App({
     try {
       await services.session.signOut(state.authSession);
     } finally {
+      // Reopening the site after explicit sign-out should also show Welcome.
+      await deviceMemory.forget();
       dispatch({ type: 'LOGOUT' });
     }
   }, [services, state.authSession, dispatch]);

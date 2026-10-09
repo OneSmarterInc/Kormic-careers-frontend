@@ -9,7 +9,8 @@ import * as SecureStore from 'expo-secure-store';
  * questions and have different lifetimes — signing out ends a session, and it
  * does not make somebody a first-time visitor again.
  *
- * Nothing here is secret. It survives sign-out on purpose.
+ * Nothing here is secret. Explicit sign-out calls forget() so a fresh visit
+ * returns to Welcome; ordinary session restoration keeps this preference.
  */
 
 export interface DeviceMemory {

@@ -491,10 +491,13 @@ describe('signing out forgets the session on this device', () => {
     expect(orderedRoutes(after).length).toBeGreaterThan(4);
   });
 
-  it('lands on the door, not the pitch', () => {
+  it('returns to Welcome with no previous signed-in steps', () => {
     const state = candidateReducer(initialCandidateState, { type: 'SET_CORRIDOR', corridor: sampleCorridor });
-    // Somebody who just signed out has read the welcome screen already.
-    expect(candidateReducer(state, { type: 'LOGOUT' }).route).toBe('Entry');
+    const signedIn = { ...state, route: 'Profile' as const, authSession: { access: 'a' }, history: [{ route: 'Chat' as const }] };
+    const after = candidateReducer(signedIn, { type: 'LOGOUT' });
+    expect(after.route).toBe('Welcome');
+    expect(getPreviousRoute(after)).toBeUndefined();
+    expect(candidateReducer(after, { type: 'BACK' }).route).toBe('Welcome');
   });
 
   it('tells a returning person the same address brings their profile back', () => {

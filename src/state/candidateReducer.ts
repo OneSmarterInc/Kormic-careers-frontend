@@ -166,13 +166,12 @@ export function candidateReducer(
        * the fetch does not re-run — so dropping it here left the tour empty
        * and the ladder with no rungs, with nothing to put them back.
        *
-       * Landing on Entry rather than Welcome, because somebody who just signed
-       * out has read the pitch. The door is what they want.
+       * Return to Welcome so all three entry actions are available after sign-out.
        */
       return {
         ...initialCandidateState,
         corridor: state.corridor,
-        route: 'Entry',
+        route: 'Welcome',
       };
     default:
       return state;

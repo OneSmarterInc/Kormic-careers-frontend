@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Body, Button, Caption, Card, CheckField, DateField, ErrorText, Eyebrow, Field, Screen, Title } from '../ui';
 import {
   CandidateState,
@@ -7,13 +7,12 @@ import {
   Person,
   dateOfBirthProblem,
   hasScreeningConsent,
-  isEmailEditable,
   isPersonComplete,
   missingDetails,
 } from '../models/onboarding';
 import { CandidateServices } from '../services/candidateServices';
 import { CandidateAction } from '../state/candidateReducer';
-import { spacing, type } from '../theme/tokens';
+import { colors, fonts, spacing, type } from '../theme/tokens';
 import { CODE_LENGTH, attemptsLine, claimError, isCodeWellFormed, joinOrSignInNote } from './claimModel';
 import { stepCountLine } from './tourModel';
 import { routeAfterSignIn } from '../navigation/routes';
@@ -28,16 +27,16 @@ interface Props {
 
 export function WelcomeScreen({ state, dispatch }: Omit<Props, 'services'>) {
   return (
-    <Screen centred scroll={false}>
-      <Text style={type.eyebrow}>Kormic Careers</Text>
-      <Text style={type.display}>Your work, checked once.</Text>
-      <Body>
-        Practices ask for the same records over and over. Give them once, and carry what was checked
-        with you.
-      </Body>
-      <View style={styles.spacer} />
-      <Button label="See what it involves" onPress={() => dispatch({ type: 'NEXT' })} />
-      <Caption>{stepCountLine(state.corridor)}, free for you, always.</Caption>
+    <Screen centred>
+      <View style={styles.hero}>
+        <Text style={styles.logo}>Kormic</Text>
+        <Text accessibilityRole="header" style={styles.heroTitle}>Your agent{'\n'}<Text style={styles.accent}>starts here.</Text></Text>
+        <Text style={styles.heroBody}>Give your professional records once, and carry what was checked with you. Your Navigator helps you ask about the position.</Text>
+        <Button label="Get started" onPress={() => dispatch({ type: 'NEXT' })} />
+        <Button label="Claim invitation" variant="secondary" onPress={() => { dispatch({ type: 'SET_ENTRY_MODE', mode: 'claim' }); dispatch({ type: 'NAVIGATE', route: 'Entry' }); }} />
+        <Button label="Already started? Sign in" variant="quiet" onPress={() => { dispatch({ type: 'SET_ENTRY_MODE', mode: 'signup' }); dispatch({ type: 'NAVIGATE', route: 'Entry' }); }} />
+        <Caption>{stepCountLine(state.corridor)}, free for you, always.</Caption>
+      </View>
     </Screen>
   );
 }
@@ -47,6 +46,7 @@ export function WelcomeScreen({ state, dispatch }: Omit<Props, 'services'>) {
 export function EntryScreen({ state, dispatch, services }: Props) {
   const [email, setEmail] = useState('');
   const [token, setToken] = useState('');
+  const [invitation, setInvitation] = useState(state.entryMode === 'claim');
   const [busy, setBusy] = useState<'join' | 'claim' | undefined>();
   const [failure, setFailure] = useState<string | undefined>();
 
@@ -63,7 +63,7 @@ export function EntryScreen({ state, dispatch, services }: Props) {
    */
   async function startJoin() {
     const address = email.trim();
-    if (!address) return;
+    if (!address || !/.+@.+\..+/.test(address)) { setFailure('Enter a valid email address.'); return; }
     setBusy('join');
     setFailure(undefined);
     try {
@@ -98,7 +98,8 @@ export function EntryScreen({ state, dispatch, services }: Props) {
 
   return (
     <Screen>
-      <Title>How are you joining?</Title>
+      <Title>{invitation ? 'Claim your invitation.' : 'Let’s get you started.'}</Title>
+      {!invitation ? (<>
 
       <Card>
         <Eyebrow>Join or sign in</Eyebrow>
@@ -119,6 +120,8 @@ export function EntryScreen({ state, dispatch, services }: Props) {
         />
       </Card>
 
+      <Button label="Have an invitation?" disabled={busy !== undefined} variant="quiet" onPress={() => { setInvitation(true); setFailure(undefined); }} />
+      </>) : (<>
       <Card>
         <Eyebrow>A practice invited me</Eyebrow>
         <Caption>Paste the code from your invitation.</Caption>
@@ -138,6 +141,8 @@ export function EntryScreen({ state, dispatch, services }: Props) {
         />
       </Card>
 
+      <Button label="Join with your email instead" disabled={busy !== undefined} variant="quiet" onPress={() => { setInvitation(false); setFailure(undefined); }} />
+      </>)}
       {failure ? <ErrorText>{failure}</ErrorText> : null}
     </Screen>
   );
@@ -174,7 +179,7 @@ export function ClaimCodeScreen({ state, dispatch, services }: Props) {
   }
 
   return (
-    <Screen centred scroll={false}>
+    <Screen centred>
       <Title>Check your email</Title>
       {/* The masked address is the only thing this screen may show before the
           code verifies. Nothing about the practice, the list, or the person. */}
@@ -251,7 +256,7 @@ export function JoinCodeScreen({ state, dispatch, services }: Props) {
   }
 
   return (
-    <Screen centred scroll={false}>
+    <Screen centred>
       <Title>Check your email</Title>
       <Body>We sent a {CODE_LENGTH}-digit code to {state.signup?.email ?? 'your address'}.</Body>
 
@@ -393,7 +398,8 @@ function IdentitySection({
 }
 
 export function BasicInfoScreen({ state, dispatch, services }: Props) {
-  const emailLocked = !isEmailEditable(state);
+  const emailLocked = true;
+  const wide = useWindowDimensions().width >= 760;
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
   const [attempted, setAttempted] = useState(false);
@@ -447,11 +453,11 @@ export function BasicInfoScreen({ state, dispatch, services }: Props) {
       <Title>About you</Title>
       <Caption>This is what a practice sees alongside what was checked.</Caption>
 
+      <View style={[styles.formGrid, wide && styles.formGridWide]}>
       {personFields.map((field) => {
         const locked = field.key === 'email' && emailLocked;
         return (
-          <Field
-            key={field.key}
+          <View key={field.key} style={wide ? styles.halfField : styles.fullField}><Field
             label={field.label}
             value={state.person[field.key]}
             locked={locked}
@@ -460,12 +466,13 @@ export function BasicInfoScreen({ state, dispatch, services }: Props) {
             accessibilityLabel={field.label}
             hint={
               locked
-                ? 'This is the address the practice listed, so we keep it as the one we check against.'
+                ? 'Your verified sign-in address.'
                 : undefined
             }
-          />
+          /></View>
         );
       })}
+      </View>
 
       <IdentitySection person={state.person} dispatch={dispatch} showErrors={attempted} />
 
@@ -481,6 +488,16 @@ export function BasicInfoScreen({ state, dispatch, services }: Props) {
 }
 
 const styles = StyleSheet.create({
+  hero: { gap: spacing.md, paddingVertical: spacing.xl },
+  logo: { ...type.bodyStrong, fontSize: 28, textAlign: 'center', marginBottom: spacing.xl },
+  heroTitle: { ...type.display, textAlign: 'center', letterSpacing: -1.2 },
+  accent: { fontFamily: fonts.accent, color: colors.coral },
+  heroBody: { ...type.body, textAlign: 'center', fontSize: 17, lineHeight: 28, marginBottom: spacing.lg },
+  formGrid: { gap: spacing.md },
+  formGridWide: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  halfField: { width: '48%' },
+  fullField: { width: '100%' },
+
   spacer: { height: spacing.sm },
   code: { fontSize: 24, letterSpacing: 8, textAlign: 'center' },
   // Set apart from the contact fields, because these are asked for a different

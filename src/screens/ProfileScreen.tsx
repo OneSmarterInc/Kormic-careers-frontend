@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Button, Caption, ConfirmDialog, Screen, Title } from '../ui';
+import { Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Button, Caption, ConfirmDialog, ErrorText, Screen, Title } from '../ui';
 import { CandidateState, rungRoute } from '../models/onboarding';
 import { CandidateServices } from '../services/candidateServices';
 import { CandidateAction } from '../state/candidateReducer';
@@ -30,6 +30,8 @@ interface Props {
  * anywhere on this screen speaks for the profile as a whole.
  */
 export function ProfileScreen({ state, dispatch, services, onSignOut }: Props) {
+  const wide = useWindowDimensions().width >= 900;
+  const [renameError, setRenameError] = useState<string>();
   const rows = useMemo(() => buildProfileRows(state), [state]);
   const counts = useMemo(() => methodCounts(rows), [rows]);
   const prompts = useMemo(() => outstandingPrompts(rows), [rows]);
@@ -77,19 +79,20 @@ export function ProfileScreen({ state, dispatch, services, onSignOut }: Props) {
     const next = name.trim();
     if (!isNavigatorNameWellFormed(next) || renaming) return;
     setRenaming(true);
+    setRenameError(undefined);
     try {
       await services.chat.rename(state.authSession, next);
       setRenamed(next);
       setName('');
     } catch {
-      /* the old name still stands, and the field keeps what they typed */
+      setRenameError('The name could not be saved. Please try again.');
     } finally {
       setRenaming(false);
     }
   }
 
   return (
-    <Screen>
+    <Screen wide>
       <View>
         <Title>{state.person.fullName || 'Your profile'}</Title>
         <View style={styles.tally}>
@@ -114,6 +117,8 @@ export function ProfileScreen({ state, dispatch, services, onSignOut }: Props) {
         </View>
       ) : null}
 
+      <View style={[styles.columns, wide && styles.columnsWide]}>
+      <View style={styles.records}>
       {rows.map((row) => (
         <ClaimRow key={row.rungKey} row={row} dispatch={dispatch} />
       ))}
@@ -135,16 +140,15 @@ export function ProfileScreen({ state, dispatch, services, onSignOut }: Props) {
         to them that way too.
       </Text>
 
+      </View>
+      <View style={[styles.sidebar, wide && styles.sidebarWide]}>
       {/* Home needs a way to the conversation. Chat used to be reachable only
           from the handover screen, so a returning person could not get to it
           at all. */}
-      <Pressable
-        style={styles.primary}
+      <Button
+        label={`Ask ${displayName} about this position`}
         onPress={() => dispatch({ type: 'NAVIGATE', route: 'Chat' })}
-        accessibilityRole="button"
-      >
-        <Text style={styles.primaryLabel}>Ask {displayName} about this position</Text>
-      </Pressable>
+      />
 
       <View style={styles.field}>
         <Text style={type.label}>Call your {displayName} something else</Text>
@@ -175,6 +179,7 @@ export function ProfileScreen({ state, dispatch, services, onSignOut }: Props) {
         </View>
       </View>
 
+      {renameError ? <ErrorText>{renameError}</ErrorText> : null}
       {onSignOut ? (
         <View style={styles.signOut}>
           {/* The address is shown next to it, so nobody signs out of the wrong
@@ -184,6 +189,8 @@ export function ProfileScreen({ state, dispatch, services, onSignOut }: Props) {
         </View>
       ) : null}
 
+      </View>
+      </View>
       <ConfirmDialog
         visible={confirming}
         title="Sign out?"
@@ -286,6 +293,11 @@ function ClaimRow({ row, dispatch }: { row: ProfileRow; dispatch: (action: Candi
 }
 
 const styles = StyleSheet.create({
+  columns: { gap: spacing.lg },
+  columnsWide: { flexDirection: 'row', alignItems: 'flex-start' },
+  records: { flex: 1, minWidth: 0, gap: spacing.md },
+  sidebar: { gap: spacing.lg, padding: spacing.lg, backgroundColor: colors.panelRaised, borderRadius: radii.card },
+  sidebarWide: { width: 300 },
   prompt: {
     backgroundColor: colors.panel,
     borderRadius: radii.card,
@@ -325,7 +337,7 @@ const styles = StyleSheet.create({
     borderLeftColor: colors.line,
   },
   rowAttention: { borderColor: colors.coral },
-  rowHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  rowHead: { flexWrap: 'wrap', gap: spacing.sm, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   checked: { color: colors.trustBlue },
   checks: { gap: spacing.sm, marginTop: spacing.md },
   reviewText: { color: colors.coral },
@@ -346,11 +358,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: spacing.sm,
   },
-  primaryLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 15, color: colors.ink },
+  primaryLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 15, color: colors.onPrimary },
   field: { gap: spacing.xs },
   renameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   input: {
     flex: 1,
+    minWidth: 0,
     borderWidth: 1,
     borderColor: colors.line,
     borderRadius: radii.input,

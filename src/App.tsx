@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
-import { Fraunces_600SemiBold } from '@expo-google-fonts/fraunces';
+import { Fraunces_600SemiBold, Fraunces_600SemiBold_Italic } from '@expo-google-fonts/fraunces';
 import { Inter_400Regular, Inter_600SemiBold } from '@expo-google-fonts/inter';
 import { initialCandidateState } from './models/onboarding';
 import { canAdvanceFrom, getPreviousRoute, getProgress, openingRoute } from './navigation/routes';
@@ -100,6 +101,7 @@ export default function App({
    */
   const [fontsLoaded] = useFonts({
     Fraunces_600SemiBold,
+    Fraunces_600SemiBold_Italic,
     Inter_400Regular,
     Inter_600SemiBold,
   });
@@ -164,10 +166,12 @@ export default function App({
 
   return (
     <SafeAreaView style={styles.root}>
+      <StatusBar style="dark" />
       {/* The chrome is bounded to the same column as the content, so a wide
           window does not leave Back adrift in the top corner. */}
       <View style={styles.chrome}>
         <View style={styles.chromeColumn}>
+          <Text style={styles.brand}>Kormic <Text style={type.caption}>Careers</Text></Text>
           <View style={styles.header}>
             {previous ? (
               <Pressable
@@ -270,6 +274,7 @@ export default function App({
 }
 
 const styles = StyleSheet.create({
+  brand: { ...type.bodyStrong, fontSize: 21, marginBottom: spacing.sm },
   root: { flex: 1, backgroundColor: colors.ink },
   chrome: { alignItems: 'center', paddingHorizontal: layout.gutter },
   chromeColumn: { width: '100%', maxWidth: layout.maxWidth },

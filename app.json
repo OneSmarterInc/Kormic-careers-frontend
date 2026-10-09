@@ -5,10 +5,10 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "scheme": "kormiccareers",
-    "userInterfaceStyle": "dark",
-    "backgroundColor": "#12132A",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F8F9F3",
     "splash": {
-      "backgroundColor": "#12132A",
+      "backgroundColor": "#F8F9F3",
       "resizeMode": "contain"
     },
     "ios": {
@@ -18,7 +18,7 @@
     "android": {
       "package": "ai.kormic.careers",
       "adaptiveIcon": {
-        "backgroundColor": "#12132A"
+        "backgroundColor": "#F8F9F3"
       }
     },
     "web": {

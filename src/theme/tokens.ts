@@ -1,37 +1,40 @@
 import { Platform, TextStyle, ViewStyle } from 'react-native';
 
+// Legacy keys remain compatible with existing screens; ink is the page and paper is text.
 export const colors = {
-  /** The page behind everything. Deeper than the cards so they lift off it. */
-  ink: '#0E0F24',
+  onPrimary: '#FFFFFF',
+  mint: '#D8EADE',
+  /** Warm page background. */
+  ink: '#F8F9F3',
   /** Cards and inputs. */
-  panel: '#1B1E42',
+  panel: '#FFFEFA',
   /** A card under the pointer, or one carrying the eye. */
-  panelRaised: '#232752',
-  paper: '#F6F5F1',
+  panelRaised: '#EDF3E9',
+  paper: '#24352A',
 
-  coral: '#FF6B4A', // the person's side
-  coralPressed: '#E85736',
-  coralWash: 'rgba(255,107,74,0.12)',
+  coral: '#365B48', // the person's side
+  coralPressed: '#294735',
+  coralWash: '#D8EADE',
 
-  trustBlue: '#5B8DEF', // verification and the org side
-  trustWash: 'rgba(91,141,239,0.12)',
+  trustBlue: '#3D626A', // verification and the org side
+  trustWash: '#E5EFEB',
 
-  muted: '#8A8BA3',
-  textSoft: '#CBCAD9',
+  muted: '#647063',
+  textSoft: '#52634F',
 
-  line: 'rgba(255,255,255,0.09)',
-  lineStrong: 'rgba(255,255,255,0.20)',
+  line: '#DCE2D8',
+  lineStrong: '#ABBCA8',
 
-  error: '#FFB09D',
-  errorWash: 'rgba(255,176,157,0.10)',
+  error: '#973C33',
+  errorWash: '#FFF0EB',
 };
 
 export const spacing = { xxs: 4, xs: 6, sm: 10, md: 16, lg: 24, xl: 32, xxl: 48 };
 
-export const radii = { sm: 8, input: 12, card: 18, pill: 999 };
+export const radii = { sm: 8, input: 12, card: 22, pill: 999 };
 
 /**
- * One column, bounded.
+ * Responsive content widths.
  *
  * Every screen is a single column of text and controls, and on a desktop
  * browser it was running the full width of the window — profile rows nearly
@@ -39,19 +42,21 @@ export const radii = { sm: 8, input: 12, card: 18, pill: 999 };
  * difference between a form and a spreadsheet.
  */
 export const layout = {
-  maxWidth: 560,
+  maxWidth: 640,
+  wideWidth: 1000,
   gutter: spacing.lg,
 };
 
 export const fonts = {
-  heading: 'Fraunces_600SemiBold',
+  heading: 'Inter_600SemiBold',
+  accent: 'Fraunces_600SemiBold_Italic',
   body: 'Inter_400Regular',
   bodyMedium: 'Inter_600SemiBold',
 };
 
 export const type = {
-  display: { fontFamily: fonts.heading, fontSize: 32, lineHeight: 38, color: colors.paper } satisfies TextStyle,
-  title: { fontFamily: fonts.heading, fontSize: 26, lineHeight: 32, color: colors.paper } satisfies TextStyle,
+  display: { fontFamily: fonts.heading, fontSize: 44, lineHeight: 52, color: colors.paper } satisfies TextStyle,
+  title: { fontFamily: fonts.heading, fontSize: 30, lineHeight: 38, color: colors.paper } satisfies TextStyle,
   heading: { fontFamily: fonts.heading, fontSize: 19, lineHeight: 25, color: colors.paper } satisfies TextStyle,
   body: { fontFamily: fonts.body, fontSize: 15, lineHeight: 24, color: colors.textSoft } satisfies TextStyle,
   bodyStrong: { fontFamily: fonts.bodyMedium, fontSize: 15, lineHeight: 24, color: colors.paper } satisfies TextStyle,
@@ -68,21 +73,21 @@ export const type = {
   } satisfies TextStyle,
 };
 
-/** Cards sit above the page rather than being drawn on it. */
+/** Subtle elevation complements the light card borders. */
 export const elevation = {
   card: {
     shadowColor: '#000000',
-    shadowOpacity: 0.28,
+    shadowOpacity: 0.04,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
+    elevation: 1,
   } satisfies ViewStyle,
   button: {
     shadowColor: '#000000',
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.06,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
+    elevation: 1,
   } satisfies ViewStyle,
 };
 

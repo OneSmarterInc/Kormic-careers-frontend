@@ -114,6 +114,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primaryBusy: { opacity: 0.4 },
-  primaryLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 15, color: colors.ink },
+  primaryLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 15, color: colors.onPrimary },
   secondary: { ...type.caption, textAlign: 'center', textDecorationLine: 'underline' },
 });

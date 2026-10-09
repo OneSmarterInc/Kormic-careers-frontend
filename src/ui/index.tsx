@@ -30,6 +30,7 @@ interface ScreenProps {
   /** Vertically centres a short screen instead of stacking from the top. */
   centred?: boolean;
   scroll?: boolean;
+  wide?: boolean;
 }
 
 /**
@@ -38,13 +39,13 @@ interface ScreenProps {
  * The `alignItems: center` on the outer view plus `maxWidth` on the inner one
  * is what stops a desktop browser rendering the whole app at window width.
  */
-export function Screen({ children, centred = false, scroll = true }: ScreenProps) {
+export function Screen({ children, centred = false, scroll = true, wide = false }: ScreenProps) {
   const column = (
-    <View style={[styles.column, centred && styles.columnCentred]}>{children}</View>
+    <View style={[styles.column, wide && styles.columnWide, !scroll && styles.columnFill, centred && styles.columnCentred]}>{children}</View>
   );
 
   if (!scroll) {
-    return <View style={[styles.page, centred && styles.pageCentred]}>{column}</View>;
+    return <View style={[styles.page, styles.fixedPage, centred && styles.pageCentred]}>{column}</View>;
   }
 
   return (
@@ -73,7 +74,7 @@ export function Stack({ children, gap = spacing.md }: { children: React.ReactNod
 // --- text -----------------------------------------------------------------
 
 export function Title({ children }: { children: React.ReactNode }) {
-  return <Text style={type.title}>{children}</Text>;
+  return <Text accessibilityRole="header" style={type.title}>{children}</Text>;
 }
 
 export function Body({ children }: { children: React.ReactNode }) {
@@ -243,7 +244,7 @@ export function Button({
       ]}
     >
       {busy ? (
-        <ActivityIndicator color={isPrimary || isDestructive ? colors.ink : colors.paper} />
+        <ActivityIndicator color={isPrimary || isDestructive ? colors.onPrimary : colors.paper} />
       ) : (
         <Text style={isPrimary || isDestructive ? styles.primaryLabel : styles.secondaryLabel}>
           {label}
@@ -537,7 +538,10 @@ const styles = StyleSheet.create({
   pageContent: { flexGrow: 1, alignItems: 'center', paddingHorizontal: layout.gutter, paddingVertical: spacing.lg },
   pageCentred: { justifyContent: 'center', alignItems: 'center' },
   column: { width: '100%', maxWidth: layout.maxWidth, gap: spacing.md },
-  columnCentred: { gap: spacing.lg },
+  columnCentred: { gap: spacing.lg, justifyContent: 'center' },
+  columnWide: { maxWidth: layout.wideWidth },
+  columnFill: { flex: 1 },
+  fixedPage: { alignItems: 'center', padding: layout.gutter },
 
   card: {
     backgroundColor: colors.panel,
@@ -556,20 +560,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 50,
+    minHeight: 52,
   },
   block: { alignSelf: 'stretch' },
   primary: { backgroundColor: colors.coral },
   primaryPressed: { backgroundColor: colors.coralPressed, transform: [{ scale: 0.985 }] },
-  primaryLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 15, color: colors.ink },
+  primaryLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 15, color: colors.onPrimary, textAlign: 'center' },
   destructive: { backgroundColor: colors.error },
-  destructivePressed: { backgroundColor: '#F19783', transform: [{ scale: 0.985 }] },
+  destructivePressed: { backgroundColor: '#7F3029', transform: [{ scale: 0.985 }] },
   secondary: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.lineStrong },
   secondaryPressed: { backgroundColor: colors.panelRaised },
   secondaryLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 15, color: colors.paper },
   inert: { opacity: 0.45 },
 
-  quiet: { paddingVertical: spacing.sm, alignItems: 'center' },
+  quiet: { minHeight: 44, justifyContent: 'center', paddingVertical: spacing.sm, alignItems: 'center' },
   quietBlock: { alignSelf: 'stretch' },
   quietPressed: { opacity: 0.6 },
   quietLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 13.5, color: colors.coral },
@@ -628,7 +632,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   checkBoxOn: { borderColor: colors.coral, backgroundColor: colors.coral },
-  checkMark: { color: colors.ink, fontSize: 14, fontFamily: 'Inter_600SemiBold', lineHeight: 16 },
+  checkMark: { color: colors.onPrimary, fontSize: 14, fontFamily: 'Inter_600SemiBold', lineHeight: 16 },
   checkText: { flex: 1 },
 
   scrim: {

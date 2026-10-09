@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {  StyleSheet, Text, View } from 'react-native';
 import { CandidateState } from '../models/onboarding';
 import { CandidateAction } from '../state/candidateReducer';
 import { colors, radii, spacing, type } from '../theme/tokens';
-import { Screen } from '../ui';
+import { Button, Screen } from '../ui';
 import { buildTour, stepCountLine, tourPosition } from './tourModel';
 
 interface Props {
@@ -31,14 +31,14 @@ export function TourScreen({ state, dispatch }: Props) {
   }
 
   return (
-    <Screen scroll={false}>
+    <Screen>
       <View style={styles.dots} accessibilityLabel={`Part ${position.current} of ${position.total}`}>
         {stops.map((entry, entryIndex) => (
           <View key={entry.key} style={[styles.dot, entryIndex <= index && styles.dotOn]} />
         ))}
       </View>
 
-      <ScrollView contentContainerStyle={styles.body} style={styles.bodyScroll}>
+      <View style={styles.body}>
         <Text style={type.caption}>{stepCountLine(state.corridor)}</Text>
         <Text style={type.title}>{stop.heading}</Text>
         <Text style={type.body}>{stop.body}</Text>
@@ -52,19 +52,12 @@ export function TourScreen({ state, dispatch }: Props) {
             ))}
           </View>
         ) : null}
-      </ScrollView>
+      </View>
 
       <View style={styles.footer}>
-        <Pressable
-          style={styles.primary}
-          onPress={() => (last ? dispatch({ type: 'NEXT' }) : setIndex(index + 1))}
-          accessibilityRole="button"
-        >
-          <Text style={styles.primaryLabel}>{last ? 'Get started' : 'Next'}</Text>
-        </Pressable>
-        <Pressable onPress={() => dispatch({ type: 'NEXT' })} accessibilityRole="button">
-          <Text style={styles.skip}>{last ? ' ' : 'Skip the tour'}</Text>
-        </Pressable>
+        <Button label={last ? 'Get started' : 'Next'} onPress={() => last ? dispatch({ type: 'NEXT' }) : setIndex(index + 1)} />
+        {index > 0 ? <Button label="Previous" variant="quiet" onPress={() => setIndex(index - 1)} /> : null}
+        {!last ? <Button label="Skip the tour" variant="quiet" onPress={() => dispatch({ type: 'NEXT' })} /> : null}
       </View>
     </Screen>
   );
@@ -91,6 +84,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     alignItems: 'center',
   },
-  primaryLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 15, color: colors.ink },
+  primaryLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 15, color: colors.onPrimary },
   skip: { ...type.caption, textAlign: 'center', textDecorationLine: 'underline' },
 });

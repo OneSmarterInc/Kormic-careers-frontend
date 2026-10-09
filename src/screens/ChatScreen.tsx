@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Button } from '../ui';
 import { CandidateState } from '../models/onboarding';
 import { CandidateServices } from '../services/candidateServices';
 import { colors, layout, radii, spacing, type } from '../theme/tokens';
@@ -20,6 +21,8 @@ export function ChatScreen({ state, services, pollMs = 15000, onVisibilityChange
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
+  const [historyAttempt, setHistoryAttempt] = useState(0);
+  const [historyFailed, setHistoryFailed] = useState(false);
   const scroller = useRef<ScrollView | null>(null);
 
   // The push handler suppresses a banner while this screen is in front, because
@@ -31,13 +34,15 @@ export function ChatScreen({ state, services, pollMs = 15000, onVisibilityChange
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setHistoryFailed(false);
     services.chat
       .history(state.authSession)
       .then((loaded) => {
         if (!cancelled) setMessages(loaded);
       })
       .catch(() => {
-        if (!cancelled) setFailure('We could not load this conversation. Pull to try again.');
+        if (!cancelled) setHistoryFailed(true);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -45,7 +50,7 @@ export function ChatScreen({ state, services, pollMs = 15000, onVisibilityChange
     return () => {
       cancelled = true;
     };
-  }, [services, state.authSession]);
+  }, [services, state.authSession, historyAttempt]);
 
   const refreshEscalations = useCallback(async () => {
     const open = openQueryIds(messages);
@@ -95,19 +100,23 @@ export function ChatScreen({ state, services, pollMs = 15000, onVisibilityChange
   }
 
   return (
-    <View style={styles.screen}>
+    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={styles.heading}><Text accessibilityRole="header" style={type.heading}>{state.agentName || 'Your Navigator'}</Text><Text style={type.caption}>Questions about this position</Text></View>
       <ScrollView
+        keyboardShouldPersistTaps="handled"
         ref={scroller}
         contentContainerStyle={styles.thread}
         onContentSizeChange={() => scroller.current?.scrollToEnd({ animated: true })}
       >
         {loading ? <ActivityIndicator color={colors.coral} /> : null}
+        {historyFailed ? <View><Text style={styles.error}>We could not load this conversation.</Text><Button label="Retry loading" variant="secondary" onPress={() => setHistoryAttempt(n => n + 1)} /></View> : null}
+        {!loading && !historyFailed && messages.length === 0 ? <Text style={type.body}>What would you like to know about this position?</Text> : null}
         {messages.map((message) => (
           <View
             key={message.id}
             style={[styles.bubble, message.role === 'person' ? styles.person : styles.navigator]}
           >
-            <Text style={type.body}>{message.text}</Text>
+            <Text style={[type.body, message.role === 'person' && { color: colors.onPrimary }]}>{message.text}</Text>
             {message.escalation ? (
               <Text
                 style={[
@@ -138,11 +147,12 @@ export function ChatScreen({ state, services, pollMs = 15000, onVisibilityChange
           <Text style={[styles.send, (sending || !draft.trim()) && styles.sendDisabled]}>Send</Text>
         </Pressable>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  heading: { width: '100%', maxWidth: layout.maxWidth, alignSelf: 'center', padding: spacing.lg, gap: spacing.xs },
   screen: { flex: 1, backgroundColor: colors.ink },
   thread: {
     padding: layout.gutter,
@@ -154,9 +164,9 @@ const styles = StyleSheet.create({
   bubble: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, borderRadius: radii.card, maxWidth: '86%', gap: spacing.xs },
   person: {
     alignSelf: 'flex-end',
-    backgroundColor: colors.coralWash,
+    backgroundColor: colors.coral,
     borderWidth: 1,
-    borderColor: 'rgba(255,107,74,0.25)',
+    borderColor: colors.lineStrong,
     borderBottomRightRadius: radii.sm,
   },
   navigator: {

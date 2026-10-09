@@ -1,10 +1,14 @@
 import { candidateReducer } from '../src/state/candidateReducer';
 import { CandidateState, initialCandidateState } from '../src/models/onboarding';
 import { sampleCorridor } from '../src/services/candidateServices';
-import { decodeRecovery, encodeRecovery, pointOf, validPoint } from '../src/navigation/recovery';
+import { decodeRecovery, encodeRecovery, pointOf, shouldRestoreWebNavigation, validPoint } from '../src/navigation/recovery';
 
 const base: CandidateState = { ...initialCandidateState, corridor: sampleCorridor };
 describe('visit history and refresh recovery', () => {
+  it('distinguishes a base URL launch from a screen refresh', () => {
+    for (const hash of ['', '#', '#/']) expect(shouldRestoreWebNavigation(hash)).toBe(false);
+    for (const hash of ['#/Entry', '#/Tour/2', '#/rung%3Acv', '#/Profile']) expect(shouldRestoreWebNavigation(hash)).toBe(true);
+  });
   it('returns to each tour page before leaving the tour', () => {
     let state = candidateReducer(base, { type: 'NEXT' });
     state = candidateReducer(state, { type: 'SET_TOUR_INDEX', index: 1 });

@@ -92,3 +92,13 @@ All 183 tests and TypeScript passed; lint retained only the two existing warning
 Web export passed. Browser checks at 390px and 1440px with isolated API responses
 confirmed Welcome after sign-out, browser Back, refresh, and a fresh base-URL
 visit without the recovery snapshot; tokens and the introduction flag were cleared.
+
+## Fresh launch correction
+
+Opening the base website address while signed out now always opens Welcome,
+even when an earlier visit recorded the introduction or saved Entry. A screen
+URL still restores that screen on refresh. An existing authenticated session
+continues to open Profile on a fresh launch. No backend changes are involved.
+184 tests and TypeScript passed; web export passed. Browser checks at 390px and
+1440px confirmed launch to Welcome with an existing introduction flag, return
+to the base URL with a saved Entry snapshot, and refresh on Entry and Tour.

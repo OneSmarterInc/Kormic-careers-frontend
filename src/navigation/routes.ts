@@ -25,21 +25,9 @@ export function orderedRoutes(state: CandidateState): Route[] {
   return [...head, ...rungs, 'BuildingAgent', 'AgentLive'];
 }
 
-/**
- * Where the app opens.
- *
- * The welcome screen and the tour are an introduction, and an introduction is
- * something you give somebody once. A person who has been here before and
- * signed out is not a stranger who needs the pitch again — they want the door.
- * Somebody with a live session does not want either; they want their profile.
- *
- * Pure, so the rule is one thing in one place rather than a route decision
- * spread across a boot effect and a reducer case.
- */
+/** Fresh launches show Welcome unless an existing session opens Profile. */
 export function openingRoute(device: { signedIn: boolean; seenIntro: boolean }): Route {
-  if (device.signedIn) return 'Profile';
-  if (device.seenIntro) return 'Entry';
-  return 'Welcome';
+  return device.signedIn ? 'Profile' : 'Welcome';
 }
 
 /**

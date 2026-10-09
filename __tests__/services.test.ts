@@ -516,10 +516,8 @@ describe('the introduction is given once, not every time', () => {
     expect(openingRoute({ signedIn: true, seenIntro: false })).toBe('Profile');
   });
 
-  it('takes somebody who has been here before to the door, not the pitch', () => {
-    // Signing out does not make a person a stranger. Showing them the welcome
-    // screen and the tour again is the app forgetting who it is talking to.
-    expect(openingRoute({ signedIn: false, seenIntro: true })).toBe('Entry');
+  it('opens Welcome for a signed-out returning visitor', () => {
+    expect(openingRoute({ signedIn: false, seenIntro: true })).toBe('Welcome');
   });
 
   it('still introduces itself to a first-time visitor', () => {

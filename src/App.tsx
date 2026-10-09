@@ -4,7 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { Fraunces_600SemiBold, Fraunces_600SemiBold_Italic } from '@expo-google-fonts/fraunces';
 import { Inter_400Regular, Inter_600SemiBold } from '@expo-google-fonts/inter';
-import { decodeRecovery, pointOf, RECOVERY_KEY, validPoint } from './navigation/recovery';
+import { decodeRecovery, pointOf, RECOVERY_KEY, shouldRestoreWebNavigation, validPoint } from './navigation/recovery';
 import { useNavigationHistory } from './navigation/useNavigationHistory';
 import { ApiError } from './services/api';
 import { initialCandidateState } from './models/onboarding';
@@ -67,7 +67,7 @@ export default function App({
     setRestoreError(false);
     async function restore() {
       let saved;
-      if (Platform.OS === 'web') {
+      if (Platform.OS === 'web' && shouldRestoreWebNavigation(window.location.hash)) {
         try { saved = decodeRecovery(window.sessionStorage.getItem(RECOVERY_KEY), navigationScope); } catch { /* unavailable */ }
       }
       let snapshot;

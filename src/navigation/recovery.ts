@@ -2,6 +2,10 @@ import { CandidateState, NavigationPoint, Route, initialCandidateState } from '.
 import { applicableRungs } from '../models/corridor';
 
 export const RECOVERY_KEY = 'kormic.careers.navigation.v1';
+/** A bare site address starts a fresh visit; a screen URL can recover on refresh. */
+export function shouldRestoreWebNavigation(hash: string): boolean {
+  return hash.startsWith('#/') && hash.length > 2;
+}
 const TTL = 12 * 60 * 60 * 1000;
 const frames: Route[] = ['Welcome', 'Tour', 'Entry', 'JoinCode', 'ClaimCode', 'BasicInfo', 'BuildingAgent', 'AgentLive', 'Profile', 'Chat'];
 export interface Recovery { version: 1; scope: string; epoch: string; at: number; state: CandidateState; signedIn: boolean; personId?: string }

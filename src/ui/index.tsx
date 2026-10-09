@@ -33,12 +33,7 @@ interface ScreenProps {
   wide?: boolean;
 }
 
-/**
- * One bounded column, centred in whatever it is given.
- *
- * The `alignItems: center` on the outer view plus `maxWidth` on the inner one
- * is what stops a desktop browser rendering the whole app at window width.
- */
+/** Responsive screens fill the available viewport with consistent gutters. */
 export function Screen({ children, centred = false, scroll = true, wide = false }: ScreenProps) {
   const column = (
     <View style={[styles.column, wide && styles.columnWide, !scroll && styles.columnFill, centred && styles.columnCentred]}>{children}</View>
@@ -336,10 +331,13 @@ function readableDate(iso: string): string {
  */
 export function DateField({ label, hint, error, value, onChange, max, min, accessibilityLabel }: DateFieldProps) {
   const [open, setOpen] = React.useState(false);
+  const dateInput = React.useRef<HTMLInputElement | null>(null);
 
   const control =
     Platform.OS === 'web'
-      ? React.createElement('input', {
+      ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+        <View style={{ flex: 1 }}>{React.createElement('input', {
+          ref: dateInput,
           type: 'date',
           value,
           max,
@@ -350,7 +348,11 @@ export function DateField({ label, hint, error, value, onChange, max, min, acces
             ...webInputStyle,
             borderColor: error ? colors.error : colors.line,
           },
-        })
+        })}</View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Open date of birth calendar" onPress={() => {
+          try { if (dateInput.current?.showPicker) dateInput.current.showPicker(); else dateInput.current?.focus(); } catch { dateInput.current?.focus(); }
+        }} style={{ padding: spacing.sm }}><Text style={type.body}>Calendar</Text></Pressable>
+      </View>
       : (
           <Pressable
             onPress={() => setOpen(true)}
@@ -422,8 +424,8 @@ const webInputStyle = {
   minHeight: 48,
   boxSizing: 'border-box',
   width: '100%',
-  // Draws the calendar icon in a colour that shows on the dark panel.
-  colorScheme: 'dark',
+  // Match the browser calendar control to the light theme.
+  colorScheme: 'light',
 } as const;
 
 export interface CheckFieldProps {
@@ -537,9 +539,9 @@ const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.ink },
   pageContent: { flexGrow: 1, alignItems: 'center', paddingHorizontal: layout.gutter, paddingVertical: spacing.lg },
   pageCentred: { justifyContent: 'center', alignItems: 'center' },
-  column: { width: '100%', maxWidth: layout.maxWidth, gap: spacing.md },
+  column: { width: '100%', gap: spacing.md },
   columnCentred: { gap: spacing.lg, justifyContent: 'center' },
-  columnWide: { maxWidth: layout.wideWidth },
+  columnWide: { width: '100%' },
   columnFill: { flex: 1 },
   fixedPage: { alignItems: 'center', padding: layout.gutter },
 

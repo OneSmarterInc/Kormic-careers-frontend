@@ -57,7 +57,6 @@ export function TourScreen({ state, dispatch }: Props) {
 
       <View style={styles.footer}>
         <Button label={last ? 'Get started' : 'Next'} onPress={() => last ? dispatch({ type: 'NEXT' }) : setIndex(index + 1)} />
-        {index > 0 ? <Button label="Previous" variant="quiet" onPress={() => dispatch({ type: 'BACK' })} /> : null}
         {!last ? <Button label="Skip the tour" variant="quiet" onPress={() => dispatch({ type: 'NEXT' })} /> : null}
       </View>
     </Screen>

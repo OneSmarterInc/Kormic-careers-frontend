@@ -33,17 +33,8 @@ export const spacing = { xxs: 4, xs: 6, sm: 10, md: 16, lg: 24, xl: 32, xxl: 48 
 
 export const radii = { sm: 8, input: 12, card: 22, pill: 999 };
 
-/**
- * Responsive content widths.
- *
- * Every screen is a single column of text and controls, and on a desktop
- * browser it was running the full width of the window — profile rows nearly
- * two thousand pixels across, with three words in them. A measure is the
- * difference between a form and a spreadsheet.
- */
+/** Shared viewport gutters; dialogs keep their own readable width. */
 export const layout = {
-  maxWidth: 640,
-  wideWidth: 1000,
   gutter: spacing.lg,
 };
 

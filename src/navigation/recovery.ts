@@ -3,8 +3,8 @@ import { applicableRungs } from '../models/corridor';
 
 export const RECOVERY_KEY = 'kormic.careers.navigation.v1';
 /** A bare site address starts a fresh visit; a screen URL can recover on refresh. */
-export function shouldRestoreWebNavigation(hash: string): boolean {
-  return hash.startsWith('#/') && hash.length > 2;
+export function shouldRestoreWebNavigation(hash: string, pathname = '/'): boolean {
+  return (hash.startsWith('#/') && hash.length > 2) || pathname !== '/';
 }
 const TTL = 12 * 60 * 60 * 1000;
 const frames: Route[] = ['Welcome', 'Tour', 'Entry', 'JoinCode', 'ClaimCode', 'BasicInfo', 'BuildingAgent', 'AgentLive', 'Profile', 'Chat'];

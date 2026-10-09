@@ -102,3 +102,38 @@ continues to open Profile on a fresh launch. No backend changes are involved.
 184 tests and TypeScript passed; web export passed. Browser checks at 390px and
 1440px confirmed launch to Welcome with an existing introduction flag, return
 to the base URL with a saved Entry snapshot, and refresh on Entry and Tour.
+
+## Eight frontend refinements
+
+- Screens and header use the viewport width with consistent gutters; contact
+  details retain responsive columns and mobile stacking.
+- DOB uses a light browser date input with an explicit Calendar button. Existing
+  date limits and native date pickers remain unchanged.
+- Multiple screenshots show one thumbnail and an additional-photo count. The
+  review dialog retains individual removal; object URLs are released on unmount.
+- Profile-building content starts near the top and can scroll on small screens.
+- Web chat sends with Enter, uses Shift+Enter for newlines, respects composition
+  input and prevents duplicate in-flight sends.
+- Chat fills available height; the composer stays visible while the thread
+  scrolls. Reading older messages no longer forces a jump on content changes.
+- The duplicate tour Previous button is removed; the shared Back remains.
+- URLs use readable paths without hashes. Legacy hash links normalize to the new
+  paths. Existing authentication and route prerequisites still apply.
+
+Validation: 197 tests, TypeScript and all three Expo platform exports passed.
+Lint has only the two existing duplicate-import warnings. Browser checks covered
+onboarding, refresh, browser history, upload counts/removal, Enter/Shift+Enter,
+sign-out, legacy links and direct authenticated paths. Long conversations with
+80 test messages at 390px and 1440px kept the composer visible and allowed reading
+older messages without jumping. No uncaught browser errors or horizontal overflow.
+Browser data was isolated mock/test API data, not production backend verification.
+
+Hosting prerequisite (not changed): production frontend hosting must serve
+index.html for application paths such as /profile and /navigator/chat, while
+serving assets and API paths normally. Expo's local development server returned
+the app shell with HTTP 200 for /personal-details. Exported browser tests used a
+temporary SPA fallback server. The production host is not identified in this
+repository, so production deep-link/refresh acceptance remains blocked on checking
+its fallback rules. No hosting settings, backend or deployment configuration were
+modified. Deployment changes require separate approval. Hosting under a URL
+subdirectory would also require an explicitly configured base path.

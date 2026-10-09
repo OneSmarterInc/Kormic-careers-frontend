@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   Body,
   Button,
@@ -16,9 +16,9 @@ import {
 import { CorridorRung, findRung, runsOnJoin } from '../models/corridor';
 import { CandidateState, claimsForRung, rungKeyOf } from '../models/onboarding';
 import { CandidateAction } from '../state/candidateReducer';
-import { CandidateServices } from '../services/candidateServices';
+import { CandidateServices, PickedFile } from '../services/candidateServices';
 import { oauthPollPolicy, poll, pollHandle, verifierPollPolicy } from '../services/polling';
-import { colors, spacing, type } from '../theme/tokens';
+import { colors, radii, spacing, type } from '../theme/tokens';
 import {
   RungDraft,
   canSkip,
@@ -59,6 +59,7 @@ export function RungScreen({ state, dispatch, services }: Props) {
   useEffect(() => {
     if (key) dispatch({ type: 'SAVE_RUNG_DRAFT', key, value: draft.value, jurisdiction: draftJurisdiction });
   }, [key, draft.value, draftJurisdiction, dispatch]);
+  const [reviewingPhotos, setReviewingPhotos] = useState(false);
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
@@ -325,9 +326,21 @@ export function RungScreen({ state, dispatch, services }: Props) {
               ? 'Nothing added yet'
               : `${draft.attachments?.length} added`}
           </Eyebrow>
+          {draft.attachments?.length ? (
+            <Pressable accessibilityRole="button" accessibilityLabel={`Review ${draft.attachments.length} selected photos`} onPress={() => setReviewingPhotos(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+              <PhotoPreview file={draft.attachments[0]!} />
+              {draft.attachments.length > 1 ? <Text style={type.heading}>+{draft.attachments.length - 1}</Text> : null}
+              <Text style={type.caption}>Review photos</Text>
+            </Pressable>
+          ) : null}
+          <Modal visible={reviewingPhotos} transparent animationType="fade" onRequestClose={() => setReviewingPhotos(false)}>
+            <View style={{ flex: 1, backgroundColor: '#00000066', justifyContent: 'center', padding: spacing.lg }}>
+              <View style={{ backgroundColor: colors.panel, borderRadius: radii.card, padding: spacing.lg, maxHeight: '85%', width: '100%', maxWidth: 600, alignSelf: 'center', gap: spacing.md }}>
+                <Text style={type.heading}>Selected photos ({draft.attachments?.length ?? 0})</Text>
+                <ScrollView>
           {(draft.attachments ?? []).map((file, index) => (
             <View key={`${file.name}-${index}`} style={styles.attachment}>
-              <Text style={type.bodyStrong} numberOfLines={1}>
+              <PhotoPreview file={file} /><Text style={[type.bodyStrong, { flex: 1 }]} numberOfLines={1}>
                 {file.name}
               </Text>
               <Pressable onPress={() => removeScreenshot(index)} accessibilityRole="button">
@@ -335,6 +348,11 @@ export function RungScreen({ state, dispatch, services }: Props) {
               </Pressable>
             </View>
           ))}
+                </ScrollView>
+                <Button label="Done" onPress={() => setReviewingPhotos(false)} />
+              </View>
+            </View>
+          </Modal>
           {(draft.attachments?.length ?? 0) > 0 ? (
             <Button label="Add more" variant="quiet" onPress={addScreenshots} />
           ) : (
@@ -374,3 +392,17 @@ const styles = StyleSheet.create({
   },
   remove: { fontFamily: 'Inter_600SemiBold', fontSize: 12.5, color: colors.error },
 });
+
+function PhotoPreview({ file }: { file: PickedFile }) {
+  const [uri, setUri] = useState(file.uri);
+  useEffect(() => {
+    if (file.file && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+      const url = URL.createObjectURL(file.file);
+      setUri(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    setUri(file.uri);
+  }, [file]);
+  return uri ? <Image source={{ uri }} accessibilityLabel={file.name} style={{ width: 72, height: 72, borderRadius: radii.sm }} />
+    : <Text style={[type.caption, { width: 72 }]} numberOfLines={3}>{file.name}</Text>;
+}

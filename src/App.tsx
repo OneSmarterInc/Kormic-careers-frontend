@@ -1,3 +1,4 @@
+import { pointFromUrl } from './navigation/paths';
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -67,7 +68,7 @@ export default function App({
     setRestoreError(false);
     async function restore() {
       let saved;
-      if (Platform.OS === 'web' && shouldRestoreWebNavigation(window.location.hash)) {
+      if (Platform.OS === 'web' && shouldRestoreWebNavigation(window.location.hash, window.location.pathname)) {
         try { saved = decodeRecovery(window.sessionStorage.getItem(RECOVERY_KEY), navigationScope); } catch { /* unavailable */ }
       }
       let snapshot;
@@ -97,6 +98,10 @@ export default function App({
           }
         }
         setEpoch(saved.epoch);
+      }
+      if (Platform.OS === 'web') {
+        const requested = pointFromUrl(window.location.pathname, window.location.hash);
+        if (requested) next = { ...next, ...requested };
       }
       // Corridor loads independently. Validate rung destinations only after it arrives.
       rawDispatch({ type: 'RESTORE', state: next });
@@ -192,7 +197,7 @@ export default function App({
   useEffect(() => {
     if (restoring || loading || !state.corridor || restoreError) return;
     if (!validPoint(pointOf(state), state)) {
-      rawDispatch({ type: 'RESTORE_LOCATION', point: { route: state.authSession ? 'Profile' : 'Entry', entryMode: state.entryMode }, history: [] });
+      rawDispatch({ type: 'RESTORE_LOCATION', point: { route: state.authSession ? 'Profile' : 'Welcome', entryMode: state.entryMode }, history: [] });
     }
   }, [restoring, loading, state, restoreError]);
 
@@ -203,8 +208,7 @@ export default function App({
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar style="dark" />
-      {/* The chrome is bounded to the same column as the content, so a wide
-          window does not leave Back adrift in the top corner. */}
+      {/* Header and content share the same responsive viewport gutters. */}
       <View style={styles.chrome}>
         <View style={styles.chromeColumn}>
           <Text style={styles.brand}>Kormic <Text style={type.caption}>Careers</Text></Text>
@@ -318,7 +322,7 @@ const styles = StyleSheet.create({
   brand: { ...type.bodyStrong, fontSize: 21, marginBottom: spacing.sm },
   root: { flex: 1, backgroundColor: colors.ink },
   chrome: { alignItems: 'center', paddingHorizontal: layout.gutter },
-  chromeColumn: { width: '100%', maxWidth: layout.maxWidth },
+  chromeColumn: { width: '100%' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -337,6 +341,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   fill: { height: 4, backgroundColor: colors.coral, borderRadius: radii.pill },
-  body: { flex: 1 },
+  body: { flex: 1, minHeight: 0 },
   centred: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.lg },
 });

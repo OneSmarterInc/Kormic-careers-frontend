@@ -462,7 +462,7 @@ export function BasicInfoScreen({ state, dispatch, services }: Props) {
   }
 
   return (
-    <Screen>
+    <Screen wide>
       <Title>About you</Title>
       <Caption>This is what a practice sees alongside what was checked.</Caption>
 

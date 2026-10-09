@@ -1,3 +1,4 @@
+import { pathFor, pointFromUrl } from './paths';
 import { useCallback, useEffect, useRef } from 'react';
 import { BackHandler, Platform } from 'react-native';
 import { CandidateState, NavigationPoint } from '../models/onboarding';
@@ -17,6 +18,15 @@ export function useNavigationHistory(state: CandidateState, dispatch: (action: C
     if (!ready || Platform.OS !== 'web') return;
     const onPop = (event: PopStateEvent) => {
       const entry = event.state?.careers as BrowserEntry | undefined;
+      if (!entry) {
+        const requested = pointFromUrl(window.location.pathname, window.location.hash);
+        if (requested && validPoint(requested, latest.current)) {
+          traversing.current = true;
+          previousPoint.current = '';
+          dispatch({ type: 'RESTORE_LOCATION', point: requested, history: [] });
+          return;
+        }
+      }
       if (!entry || entry.scope !== scope || entry.epoch !== epoch || !Array.isArray(entry.history) || !validPoint(entry.point, latest.current)) {
         // Old signed-out history or an invalid location cannot revive a session.
         window.history.replaceState(null, '', window.location.pathname + window.location.search);
@@ -42,9 +52,9 @@ export function useNavigationHistory(state: CandidateState, dispatch: (action: C
     previousEpoch.current = epoch;
     const owned = !reset && existing?.scope === scope && existing?.epoch === epoch;
     const same = owned && JSON.stringify(existing.point) === key;
-    if (!same) {
+    if (!same || window.location.hash || window.location.pathname !== pathFor(point)) {
       const entry: BrowserEntry = { scope, epoch, index: owned && previousPoint.current ? existing.index + 1 : 0, point, history: state.history ?? [] };
-      const url = `${window.location.pathname}${window.location.search}#/${encodeURIComponent(state.route)}${state.route === 'Tour' ? `/${state.tourIndex ?? 0}` : ''}`;
+      const url = `${pathFor(point)}${window.location.search}`;
       if (owned && previousPoint.current && !traversing.current) window.history.pushState({ careers: entry }, '', url);
       else window.history.replaceState({ careers: entry }, '', url);
     }

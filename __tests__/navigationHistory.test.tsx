@@ -22,7 +22,7 @@ describe('browser navigation history', () => {
     jest.clearAllMocks();
     history.state = { careers: { scope: 'scope', epoch: 'saved', index: 2, point: { ...point, entryMode: undefined }, history: state.history } };
     Object.assign(window, {
-      history, location: { pathname: '/', search: '' },
+      history, location: { pathname: '/tour/3', search: '', hash: '' },
       sessionStorage: { setItem: jest.fn() },
       addEventListener: jest.fn((_name, listener) => { pop = listener; }),
       removeEventListener: jest.fn(),
@@ -47,7 +47,7 @@ describe('browser navigation history', () => {
   it('rejects a browser entry from a signed-out session', async () => {
     await act(async () => { tree = create(<Harness ready epoch="saved" />); });
     pop!({ state: { careers: { scope: 'scope', epoch: 'old-session', point: { route: 'Chat' }, history: [] } } });
-    expect(history.replaceState).toHaveBeenCalledWith(null, '', '/');
+    expect(history.replaceState).toHaveBeenCalledWith(null, '', '/tour/3');
     expect(dispatch.mock.calls[0][0].point.route).toBe('Tour');
   });
 });

@@ -34,7 +34,7 @@ export function BuildingAgentScreen({ state, dispatch, services, stageMs = 900 }
   }, [dispatch, progress.done, state.buildStage, stageMs]);
 
   return (
-    <Screen centred scroll={false}>
+    <Screen>
       <Title>Putting your profile together</Title>
 
       {progress.done ? (

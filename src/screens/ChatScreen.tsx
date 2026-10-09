@@ -23,6 +23,8 @@ export function ChatScreen({ state, services, pollMs = 15000, onVisibilityChange
   const [failure, setFailure] = useState<string | undefined>();
   const [historyAttempt, setHistoryAttempt] = useState(0);
   const [historyFailed, setHistoryFailed] = useState(false);
+  const nearBottom = useRef(true);
+  const sendLock = useRef(false);
   const scroller = useRef<ScrollView | null>(null);
 
   // The push handler suppresses a banner while this screen is in front, because
@@ -74,7 +76,9 @@ export function ChatScreen({ state, services, pollMs = 15000, onVisibilityChange
 
   async function handleSend() {
     const text = draft.trim();
-    if (!text || sending) return;
+    if (!text || sendLock.current) return;
+    sendLock.current = true;
+    nearBottom.current = true;
     setSending(true);
     setFailure(undefined);
     const optimistic: Message = {
@@ -95,6 +99,7 @@ export function ChatScreen({ state, services, pollMs = 15000, onVisibilityChange
       setMessages((current) => current.filter((message) => message.id !== optimistic.id));
       setDraft(text);
     } finally {
+      sendLock.current = false;
       setSending(false);
     }
   }
@@ -105,8 +110,11 @@ export function ChatScreen({ state, services, pollMs = 15000, onVisibilityChange
       <ScrollView
         keyboardShouldPersistTaps="handled"
         ref={scroller}
+        style={{ flex: 1, minHeight: 0 }}
+        scrollEventThrottle={100}
+        onScroll={({ nativeEvent: e }) => { nearBottom.current = e.contentSize.height - e.layoutMeasurement.height - e.contentOffset.y < 80; }}
         contentContainerStyle={styles.thread}
-        onContentSizeChange={() => scroller.current?.scrollToEnd({ animated: true })}
+        onContentSizeChange={() => { if (nearBottom.current) scroller.current?.scrollToEnd({ animated: true }); }}
       >
         {loading ? <ActivityIndicator color={colors.coral} /> : null}
         {historyFailed ? <View><Text style={styles.error}>We could not load this conversation.</Text><Button label="Retry loading" variant="secondary" onPress={() => setHistoryAttempt(n => n + 1)} /></View> : null}
@@ -141,6 +149,13 @@ export function ChatScreen({ state, services, pollMs = 15000, onVisibilityChange
           placeholder="Ask about the position"
           placeholderTextColor={colors.muted}
           multiline
+          onKeyPress={Platform.OS === 'web' ? (event) => {
+            const key = event.nativeEvent as typeof event.nativeEvent & { shiftKey?: boolean; isComposing?: boolean; keyCode?: number };
+            if (key.key === 'Enter' && !key.shiftKey && !key.isComposing && key.keyCode !== 229) {
+              event.preventDefault();
+              void handleSend();
+            }
+          } : undefined}
           accessibilityLabel="Message"
         />
         <Pressable onPress={handleSend} disabled={sending || !draft.trim()} accessibilityRole="button">
@@ -152,13 +167,12 @@ export function ChatScreen({ state, services, pollMs = 15000, onVisibilityChange
 }
 
 const styles = StyleSheet.create({
-  heading: { width: '100%', maxWidth: layout.maxWidth, alignSelf: 'center', padding: spacing.lg, gap: spacing.xs },
-  screen: { flex: 1, backgroundColor: colors.ink },
+  heading: { width: '100%', alignSelf: 'center', padding: spacing.lg, gap: spacing.xs },
+  screen: { flex: 1, minHeight: 0, overflow: 'hidden', backgroundColor: colors.ink },
   thread: {
     padding: layout.gutter,
     gap: spacing.sm,
     width: '100%',
-    maxWidth: layout.maxWidth,
     alignSelf: 'center',
   },
   bubble: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, borderRadius: radii.card, maxWidth: '86%', gap: spacing.xs },
@@ -180,6 +194,8 @@ const styles = StyleSheet.create({
   answered: { color: colors.trustBlue },
   error: { ...type.caption, color: colors.error, paddingHorizontal: spacing.lg, textAlign: 'center' },
   composer: {
+    flexShrink: 0,
+    backgroundColor: colors.ink,
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: spacing.sm,
@@ -187,7 +203,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.line,
     width: '100%',
-    maxWidth: layout.maxWidth,
     alignSelf: 'center',
   },
   input: {

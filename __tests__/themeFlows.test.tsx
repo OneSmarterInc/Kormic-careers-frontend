@@ -1,6 +1,6 @@
 import React, { useReducer } from 'react';
 import { candidateReducer } from '../src/state/candidateReducer';
-import { Text, TextInput } from 'react-native';
+import { Platform, Text, TextInput } from 'react-native';
 import { EntryScreen, BasicInfoScreen } from '../src/screens/EntryScreens';
 import { ChatScreen } from '../src/screens/ChatScreen';
 import { ProfileScreen } from '../src/screens/ProfileScreen';
@@ -51,6 +51,28 @@ describe('theme interaction regressions', () => {
     await act(async () => retry.props.onPress());
     expect(history).toHaveBeenCalledTimes(2);
     expect(tree.root.findAllByType(Text).some((n: {props: {children: unknown}}) => n.props.children === 'What would you like to know about this position?')).toBe(true);
+  });
+  it('sends Enter once while preserving Shift+Enter and composition input', async () => {
+    const platform = jest.replaceProperty(Platform, 'OS', 'web');
+    const send = jest.fn().mockResolvedValue({ id: 'reply', role: 'assistant', text: 'Reply', sentAt: '' });
+    try {
+      await act(async () => { tree = create(<ChatScreen state={initialCandidateState} services={{ ...mockCandidateServices, chat: { ...mockCandidateServices.chat, history: async () => [], send } }} />); });
+      await act(async () => tree.root.findByType(TextInput).props.onChangeText('Question'));
+      const handler = tree.root.findByType(TextInput).props.onKeyPress;
+      const preventDefault = jest.fn();
+      await act(async () => {
+        handler({ nativeEvent: { key: 'Enter', shiftKey: true }, preventDefault });
+        handler({ nativeEvent: { key: 'Enter', isComposing: true }, preventDefault });
+      });
+      expect(send).not.toHaveBeenCalled();
+      expect(preventDefault).not.toHaveBeenCalled();
+      await act(async () => {
+        handler({ nativeEvent: { key: 'Enter' }, preventDefault });
+        handler({ nativeEvent: { key: 'Enter' }, preventDefault });
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(send).toHaveBeenCalledWith(undefined, 'Question');
+    } finally { platform.restore(); }
   });
   it('keeps a failed Navigator rename visible and preserves the draft', async () => {
     const rename = jest.fn().mockRejectedValue(new Error('offline'));

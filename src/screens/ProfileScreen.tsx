@@ -5,7 +5,7 @@ import { CandidateState, rungRoute } from '../models/onboarding';
 import { CandidateServices } from '../services/candidateServices';
 import { CandidateAction } from '../state/candidateReducer';
 import { MAX_NAVIGATOR_NAME, isNavigatorNameWellFormed, navigatorName } from './agentModel';
-import { colors, elevation, radii, spacing, type } from '../theme/tokens';
+import { colors, radii, spacing, type } from '../theme/tokens';
 import {
   BackgroundCheck,
   ProfileRow,
@@ -30,7 +30,9 @@ interface Props {
  * anywhere on this screen speaks for the profile as a whole.
  */
 export function ProfileScreen({ state, dispatch, services, onSignOut }: Props) {
-  const wide = useWindowDimensions().width >= 900;
+  const { width } = useWindowDimensions();
+  const wide = width >= 1000;
+  const grid = width >= 700;
   const [renameError, setRenameError] = useState<string>();
   const rows = useMemo(() => buildProfileRows(state), [state]);
   const counts = useMemo(() => methodCounts(rows), [rows]);
@@ -92,9 +94,9 @@ export function ProfileScreen({ state, dispatch, services, onSignOut }: Props) {
   }
 
   return (
-    <Screen wide>
-      <View>
-        <Title>{state.person.fullName || 'Your profile'}</Title>
+    <Screen wide compactSpacing showsVerticalScrollIndicator={false}>
+      <View style={[styles.profileHead, wide && styles.profileHeadWide]}>
+        <View style={styles.profileTitle}><Text style={type.eyebrow}>Your profile</Text><Title>{state.person.fullName || 'Your profile'}</Title></View>
         <View style={styles.tally}>
           <View style={styles.pillChecked}>
             <Text style={styles.pillCheckedText}>
@@ -119,9 +121,12 @@ export function ProfileScreen({ state, dispatch, services, onSignOut }: Props) {
 
       <View style={[styles.columns, wide && styles.columnsWide]}>
       <View style={styles.records}>
+      <Text style={type.eyebrow}>Professional records</Text>
+      <View style={styles.recordGrid}>
       {rows.map((row) => (
-        <ClaimRow key={row.rungKey} row={row} dispatch={dispatch} />
+        <View key={row.rungKey} style={grid ? styles.gridCell : styles.singleCell}><ClaimRow row={row} dispatch={dispatch} /></View>
       ))}
+      </View>
 
       {/* Their own section, in their own words. A background check is a
           search of a list, not a fact about the person, so it never sits among
@@ -145,13 +150,14 @@ export function ProfileScreen({ state, dispatch, services, onSignOut }: Props) {
       {/* Home needs a way to the conversation. Chat used to be reachable only
           from the handover screen, so a returning person could not get to it
           at all. */}
+      <View style={styles.navigatorHeading}><Text style={type.eyebrow}>Your Navigator</Text><Text style={type.heading}>{displayName}</Text><Caption>Ask questions about this position.</Caption></View>
       <Button
         label={`Ask ${displayName} about this position`}
         onPress={() => dispatch({ type: 'NAVIGATE', route: 'Chat' })}
       />
 
       <View style={styles.field}>
-        <Text style={type.label}>Call your {displayName} something else</Text>
+        <Text style={type.label}>Navigator name</Text>
         <View style={styles.renameRow}>
           <TextInput
             style={styles.input}
@@ -166,6 +172,7 @@ export function ProfileScreen({ state, dispatch, services, onSignOut }: Props) {
             onPress={handleRename}
             disabled={renaming || !isNavigatorNameWellFormed(name)}
             accessibilityRole="button"
+            style={styles.inlineAction}
           >
             <Text
               style={[
@@ -233,7 +240,12 @@ function ClaimRow({ row, dispatch }: { row: ProfileRow; dispatch: (action: Candi
   return (
     <View style={[styles.row, row.needsAttention && styles.rowAttention]}>
       <View style={styles.rowHead}>
-        <Text style={type.label}>{row.displayName}</Text>
+        <Text style={[type.label, styles.recordTitle]}>{row.displayName}</Text>
+        {row.actionLabel ? (
+          <Pressable onPress={() => dispatch({ type: 'NAVIGATE', route: rungRoute(row.rungKey) })} accessibilityRole="button" style={styles.inlineAction}>
+            <Text style={styles.action}>{row.actionLabel}</Text>
+          </Pressable>
+        ) : null}
         {row.requirement === 'optional' && row.facts.length === 0 ? (
           <Text style={type.caption}>Optional</Text>
         ) : null}
@@ -248,7 +260,7 @@ function ClaimRow({ row, dispatch }: { row: ProfileRow; dispatch: (action: Candi
           {row.facts.map((fact) => (
             <View key={fact.factType} style={styles.fact}>
               <Text style={type.caption}>{fact.label}</Text>
-              <Text style={type.bodyStrong} numberOfLines={2}>
+              <Text style={type.bodyStrong}>
                 {fact.claim.factValue || '—'}
               </Text>
               <Text
@@ -280,23 +292,25 @@ function ClaimRow({ row, dispatch }: { row: ProfileRow; dispatch: (action: Candi
         </>
       )}
 
-      {row.actionLabel ? (
-        <Pressable
-          onPress={() => dispatch({ type: 'NAVIGATE', route: rungRoute(row.rungKey) })}
-          accessibilityRole="button"
-        >
-          <Text style={styles.action}>{row.actionLabel}</Text>
-        </Pressable>
-      ) : null}
+
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  columns: { gap: spacing.lg },
+  profileHead: { gap: spacing.sm },
+  profileHeadWide: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  profileTitle: { flexShrink: 1, gap: spacing.xxs },
+  navigatorHeading: { gap: spacing.xxs },
+  recordGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  gridCell: { width: '48.5%' },
+  singleCell: { width: '100%' },
+  recordTitle: { flex: 1, minWidth: 0 },
+  inlineAction: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.xs },
+  columns: { gap: spacing.md },
   columnsWide: { flexDirection: 'row', alignItems: 'flex-start' },
-  records: { flex: 1, minWidth: 0, gap: spacing.md },
-  sidebar: { gap: spacing.lg, padding: spacing.lg, backgroundColor: colors.panelRaised, borderRadius: radii.card },
+  records: { flex: 1, minWidth: 0, gap: spacing.sm },
+  sidebar: { gap: spacing.md, padding: spacing.md, backgroundColor: colors.panelRaised, borderRadius: radii.card },
   sidebarWide: { width: 300 },
   prompt: {
     backgroundColor: colors.panel,
@@ -307,12 +321,13 @@ const styles = StyleSheet.create({
   },
   row: {
     backgroundColor: colors.panel,
-    borderRadius: radii.card,
-    padding: spacing.md,
-    gap: spacing.xs,
+    borderRadius: radii.input,
+    padding: spacing.sm,
+    gap: spacing.xxs,
+    flex: 1,
     borderWidth: 1,
     borderColor: colors.line,
-    ...elevation.card,
+
   },
   tally: { flexDirection: 'row', gap: spacing.xs, marginTop: spacing.xs, flexWrap: 'wrap' },
   pillChecked: {
@@ -339,13 +354,13 @@ const styles = StyleSheet.create({
   rowAttention: { borderColor: colors.coral },
   rowHead: { flexWrap: 'wrap', gap: spacing.sm, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   checked: { color: colors.trustBlue },
-  checks: { gap: spacing.sm, marginTop: spacing.md },
+  checks: { gap: spacing.sm, marginTop: spacing.xs },
   reviewText: { color: colors.coral },
   attentionText: { color: colors.error },
   action: { fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.coral },
-  footnote: { ...type.caption, marginTop: spacing.md },
+  footnote: { ...type.caption, marginTop: spacing.xs },
   signOut: {
-    marginTop: spacing.lg,
+    marginTop: spacing.xxs,
     paddingTop: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.line,

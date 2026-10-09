@@ -33,10 +33,12 @@ interface ScreenProps {
   scroll?: boolean;
   wide?: boolean;
   contentWidth?: number;
+  compactSpacing?: boolean;
+  showsVerticalScrollIndicator?: boolean;
 }
 
 /** Task-sized content columns with responsive gutters and natural vertical flow. */
-export function Screen({ children, centred = false, scroll = true, wide = false, contentWidth }: ScreenProps) {
+export function Screen({ children, centred = false, scroll = true, wide = false, contentWidth, compactSpacing = false, showsVerticalScrollIndicator = true }: ScreenProps) {
   const { width } = useWindowDimensions();
   const gutter = width < 600 ? spacing.md : layout.gutter;
   const column = (
@@ -50,7 +52,8 @@ export function Screen({ children, centred = false, scroll = true, wide = false,
   return (
     <ScrollView
       style={styles.page}
-      contentContainerStyle={[styles.pageContent, { paddingHorizontal: gutter }, centred && styles.pageCentred]}
+      showsVerticalScrollIndicator={showsVerticalScrollIndicator}
+      contentContainerStyle={[styles.pageContent, compactSpacing && { paddingTop: spacing.md, paddingBottom: spacing.lg }, { paddingHorizontal: gutter }, centred && styles.pageCentred]}
       keyboardShouldPersistTaps="handled"
     >
       {column}

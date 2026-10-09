@@ -171,3 +171,10 @@ with no horizontal overflow or page errors; the rendered desktop layout was revi
 - Validation: typecheck, 199 tests in seven suites, web export, and diff whitespace checks passed. Lint has only the two existing duplicate-import warnings in ladder.test.ts.
 - Chromium at 390px and 1440px: real file chooser with test image files, count badge, review/remove, Back, no overflow or runtime errors. API interception checked both Enter verification requests and duplicate suppression with rejected responses. An initial browser test used an unavailable profile button label; the corrected test navigated directly to the credential route and passed.
 - Live backend OTP acceptance/upload persistence and physical native devices were not tested. No backend, deployment, API contract, or mock configuration changes.
+
+### Profile layout and scrolling
+
+- Replaced tall, full-width credential cards with a responsive two-column grid (single column below 700px), placing each update action alongside its title. Full values, verification dates/methods, and background-check details remain available; removed the prior two-line truncation of multi-fact values.
+- Compact profile heading, status counts, Navigator panel and account controls. Desktop sidebar begins at 1000px. Shared Screen supports opt-in compact padding and hidden vertical scroll indicator; only Profile opts in. Scrolling itself stays enabled for small screens and long records.
+- Passed typecheck, 199 tests, web export and browser checks at 390/768/1024/1440px. A five-record API fixture fits without vertical scrolling at 1024x800 and 1440x800. Smaller widths scroll with no visible scrollbar, no horizontal overflow, and no runtime errors. Credential update/back, sign-out cancel, and opening chat passed at all four widths.
+- Existing two lint warnings remain. Live backend and physical native devices not tested. No backend, API, authentication, deployment, or mock configuration changes.

@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { Fraunces_600SemiBold, Fraunces_600SemiBold_Italic } from '@expo-google-fonts/fraunces';
 import { Inter_400Regular, Inter_600SemiBold } from '@expo-google-fonts/inter';
+import { decodeRecovery, pointOf, RECOVERY_KEY, validPoint } from './navigation/recovery';
+import { useNavigationHistory } from './navigation/useNavigationHistory';
+import { ApiError } from './services/api';
 import { initialCandidateState } from './models/onboarding';
 import { canAdvanceFrom, getPreviousRoute, getProgress, openingRoute } from './navigation/routes';
 import { implementedScreens, screenFor } from './navigation/screens';
@@ -29,6 +32,7 @@ interface Props {
   services?: CandidateServices;
   corridorKey?: string;
   /** Supplied by the service boundary in index.js. See ResolvedServices. */
+  navigationScope?: string;
   registerSessionLost?: (handler: () => void) => void;
 }
 
@@ -36,47 +40,71 @@ export default function App({
   services = mockCandidateServices,
   corridorKey = 'sample',
   registerSessionLost,
+  navigationScope = `careers:${corridorKey}:${services === mockCandidateServices ? 'mock' : 'live'}`,
 }: Props) {
-  const [state, dispatch] = useReducer(candidateReducer, initialCandidateState);
+  const [state, rawDispatch] = useReducer(candidateReducer, initialCandidateState);
   const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState(true);
 
-  /**
-   * A returning person lands on their profile, not on the welcome screen.
-   *
-   * The token has always been in storage; nothing read it, so somebody who
-   * closed the tab came back to an empty ladder while their claims sat in the
-   * database with no way to ask for them. This asks.
-   *
-   * A failure here is the ordinary case, not an error: it means nobody is
-   * signed in, and the app starts where it always did.
-   */
+  const [bootAttempt, setBootAttempt] = useState(0);
+  const [restoreError, setRestoreError] = useState(false);
+  const [epoch, setEpoch] = useState(() => `${Date.now()}-${Math.random()}`);
+  const navigationBack = useRef<() => boolean>(() => false);
+  const dispatch = useCallback((action: Parameters<typeof rawDispatch>[0]) => {
+    if (action.type === 'BACK' && Platform.OS === 'web') { navigationBack.current(); return; }
+    if (action.type === 'LOGOUT') {
+      setEpoch(`${Date.now()}-${Math.random()}`);
+      if (Platform.OS === 'web') { try { window.sessionStorage.removeItem(RECOVERY_KEY); } catch { /* unavailable */ } }
+    }
+    rawDispatch(action);
+  }, []);
+  const back = useNavigationHistory(state, rawDispatch, !restoring && !loading && !restoreError, navigationScope, epoch);
+  navigationBack.current = back;
+
   useEffect(() => {
     let cancelled = false;
-
-    Promise.all([
-      services.person.load(undefined).catch(() => undefined),
-      deviceMemory.hasSeenIntro(),
-    ])
-      .then(([snapshot, seenIntro]) => {
-        if (cancelled) return;
-        if (snapshot) {
-          dispatch({ type: 'HYDRATE', snapshot });
-          dispatch({ type: 'SET_AUTH_SESSION', session: { personId: snapshot.person.personId } });
+    setRestoring(true);
+    setRestoreError(false);
+    async function restore() {
+      let saved;
+      if (Platform.OS === 'web') {
+        try { saved = decodeRecovery(window.sessionStorage.getItem(RECOVERY_KEY), navigationScope); } catch { /* unavailable */ }
+      }
+      let snapshot;
+      try { snapshot = await services.person.load(undefined); }
+      catch (error) {
+        // Keep the screen recoverable on a temporary outage; never mistake it for sign-out.
+        if (saved?.signedIn && services !== mockCandidateServices && !(error instanceof ApiError && error.code === 'unauthorised')) {
+          if (!cancelled) { setRestoreError(true); setRestoring(false); }
+          return;
         }
-        dispatch({
-          type: 'NAVIGATE',
-          route: openingRoute({ signedIn: Boolean(snapshot), seenIntro }),
-        });
-      })
-      .finally(() => {
-        if (!cancelled) setRestoring(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [services]);
+      }
+      const seenIntro = await deviceMemory.hasSeenIntro();
+      if (cancelled) return;
+      const samePerson = !snapshot || !saved?.personId || saved.personId === snapshot.person.personId;
+      const canRecover = saved && samePerson && (!saved.signedIn || snapshot || services === mockCandidateServices);
+      let next = { ...initialCandidateState, route: openingRoute({ signedIn: Boolean(snapshot), seenIntro }),
+        ...(snapshot ? { person: snapshot.person, claims: snapshot.claims, agentName: snapshot.agentName, authSession: { personId: snapshot.person.personId } } : {}) };
+      if (canRecover && saved) {
+        next = { ...next, ...saved.state, authSession: snapshot ? { personId: snapshot.person.personId } : saved.signedIn && services === mockCandidateServices ? { personId: saved.personId } : undefined,
+          claims: snapshot?.claims ?? saved.state.claims };
+        if (Platform.OS === 'web') {
+          // History traversal may reload a document instead of emitting popstate.
+          // Its location wins over the last draft's location, but never its data.
+          const entry = window.history.state?.careers;
+          if (entry?.scope === navigationScope && entry.epoch === saved.epoch && entry.point && typeof entry.point.route === 'string' && Array.isArray(entry.history)) {
+            next = { ...next, ...entry.point, history: entry.history };
+          }
+        }
+        setEpoch(saved.epoch);
+      }
+      // Corridor loads independently. Validate rung destinations only after it arrives.
+      rawDispatch({ type: 'RESTORE', state: next });
+      setRestoring(false);
+    }
+    void restore();
+    return () => { cancelled = true; };
+  }, [services, navigationScope, bootAttempt]);
 
   // Reaching the door means the introduction has been given. Remembered on the
   // device rather than in the session, so signing out does not make somebody a
@@ -91,7 +119,7 @@ export default function App({
     // The token is already cleared by the client at this point, so this only
     // has to reset what the screens are looking at.
     registerSessionLost?.(() => dispatch({ type: 'LOGOUT' }));
-  }, [registerSessionLost]);
+  }, [registerSessionLost, dispatch]);
 
   /**
    * Fraunces and Inter, declared in the theme and until now never loaded, so
@@ -119,7 +147,7 @@ export default function App({
     } finally {
       dispatch({ type: 'LOGOUT' });
     }
-  }, [services, state.authSession]);
+  }, [services, state.authSession, dispatch]);
 
   // Held in a ref, not state: the push handler is installed once and outlives
   // any render, so it needs a getter rather than a captured value.
@@ -138,7 +166,7 @@ export default function App({
   useEffect(() => {
     if (!state.authSession) return;
     void services.notifications.register(state.authSession);
-  }, [services, state.authSession]);
+  }, [services, state.authSession, dispatch]);
 
   // The ladder does not exist until the corridor answers. Nothing renders a
   // step before then, because there are no steps yet.
@@ -158,7 +186,14 @@ export default function App({
     return () => {
       cancelled = true;
     };
-  }, [services, corridorKey]);
+  }, [services, corridorKey, dispatch]);
+
+  useEffect(() => {
+    if (restoring || loading || !state.corridor || restoreError) return;
+    if (!validPoint(pointOf(state), state)) {
+      rawDispatch({ type: 'RESTORE_LOCATION', point: { route: state.authSession ? 'Profile' : 'Entry', entryMode: state.entryMode }, history: [] });
+    }
+  }, [restoring, loading, state, restoreError]);
 
   const progress = getProgress(state);
   const previous = getPreviousRoute(state);
@@ -200,7 +235,12 @@ export default function App({
       </View>
 
       <View style={styles.body}>
-        {loading || restoring || !fontsLoaded ? (
+        {restoreError ? (
+          <View style={styles.centred}>
+            <Text style={type.body}>We could not restore your session. Your saved step is still available; retry when connected.</Text>
+            <Pressable accessibilityRole="button" onPress={() => setBootAttempt(n => n + 1)}><Text style={styles.back}>Retry session</Text></Pressable>
+          </View>
+        ) : loading || restoring || !fontsLoaded ? (
           <ActivityIndicator color={colors.coral} />
         ) : state.corridorError ? (
           <View style={styles.centred}>

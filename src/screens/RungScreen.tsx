@@ -55,6 +55,10 @@ export function RungScreen({ state, dispatch, services }: Props) {
   const claims = key ? claimsForRung(state, key) : [];
 
   const [draft, setDraft] = useState<RungDraft>({ value: progress?.value, jurisdiction: progress?.jurisdiction });
+  const draftJurisdiction = jurisdictionForSubmission(draft);
+  useEffect(() => {
+    if (key) dispatch({ type: 'SAVE_RUNG_DRAFT', key, value: draft.value, jurisdiction: draftJurisdiction });
+  }, [key, draft.value, draftJurisdiction, dispatch]);
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();

@@ -16,8 +16,9 @@ counts, requirements, dates, jurisdictions and status labels remain dynamic.
 No new data fixtures or simulated successes were added to application code.
 Existing mock services remain unchanged; checked-in useMocks remains false.
 
-API services, contracts, authentication, state reducer, verification models,
-backend code/configuration/migrations and deployment were not changed.
+API services, contracts, authentication and verification rules, backend
+code/configuration/migrations and deployment were not changed. The navigation
+follow-up updates frontend state and route handling as described below.
 
 ## Verification
 
@@ -41,5 +42,43 @@ Wrong/expired signup codes share an error; no fabricated expiry detection was
 added. Invitation resend was not added. Upload/verification progress remains
 indeterminate. Existing DOB/consent rules remain unchanged.
 
-Browser/hardware history integration, production backend completion and native
-release validation remain separate work. No main merge or deployment is included.
+Production backend completion and native release validation remain separate
+work. No main merge or deployment is included.
+
+## Navigation and refresh follow-up
+
+Back now follows actual visits, including individual tour pages, invitation
+entry, profile edits and chat origins. Browser Back/Forward and Android hardware
+Back use the same history. Web refresh restores the current screen and text
+drafts from tab-scoped sessionStorage. Recovery is scoped to API host, corridor
+and mock/live mode, expires after 12 hours, and is cleared on sign-out. Existing
+access/refresh tokens are not copied into recovery storage or URLs.
+
+Signed-in recovery checks the existing person endpoint. Temporary failures offer
+a retry without discarding the draft; expired sessions use existing sign-in
+rules. Already verified email screens show the real confirmed state when
+revisited. Revisiting invitation details does not spend an already redeemed
+claim token again. Pending submissions are never recovered as successes.
+
+Follow-up verification:
+- 183 Jest tests passed across six suites, including refresh history-index
+  preservation, tour visits, profile/chat origins, draft recovery, logout
+  isolation and invitation revisit behavior.
+- TypeScript passed; ESLint passed with the same two existing test-import warnings.
+- Web, Android and iOS Expo exports passed with checked-in live configuration.
+- Browser onboarding checks using existing mock services: welcome/tour, email
+  signup and invitation verification, contact details, all applicable sample credential steps, CV picker,
+  optional skips, agent setup, profile editing, chat and sign-out. Refresh and
+  Back/Forward checked throughout; no uncaught browser errors.
+- Live-service browser checks with isolated API responses at 390px and 1440px:
+  profile/chat recovery, session-check outage and retry, expired session. No
+  uncaught errors or horizontal overflow. These are not live backend tests.
+
+Limitations:
+- Selected files/screenshots must be selected again after refresh; browser file
+  handles and pending requests are not persisted. OTP inputs are not retained.
+- Recovery requires browser sessionStorage and applies to the current tab, not
+  another device. Arbitrary pasted deep links are not an authentication bypass.
+- Native hardware integration compiled, but no emulator/physical-device test ran.
+- Real email delivery, invitation redemption, uploads, authority checks, OAuth,
+  and production chat still require backend-connected acceptance testing.

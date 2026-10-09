@@ -1,5 +1,6 @@
 import React from 'react';
 import { registerRootComponent } from 'expo';
+import { appConfig } from './src/services/config';
 import App from './src/App';
 import { resolveCandidateServices } from './src/services/resolveServices';
 
@@ -14,6 +15,7 @@ const resolved = resolveCandidateServices();
 function Root() {
   return React.createElement(App, {
     services: resolved.services,
+    navigationScope: JSON.stringify([appConfig().apiHost, resolved.corridorKey, resolved.usingMocks]),
     corridorKey: resolved.corridorKey,
     registerSessionLost: resolved.registerSessionLost,
   });

@@ -42,6 +42,7 @@ export interface RungProgress {
   value?: string;
   jurisdiction?: string;
   documentName?: string;
+  pending?: boolean;
   error?: string;
 }
 
@@ -122,7 +123,15 @@ export interface PersonSnapshot {
   agentName?: string;
 }
 
+export interface NavigationPoint {
+  route: Route;
+  tourIndex?: number;
+  entryMode?: EntryMode;
+}
+
 export interface CandidateState {
+  history?: NavigationPoint[];
+  tourIndex?: number;
   route: Route;
   corridor?: CorridorConfig;
   corridorError?: string;

@@ -1,6 +1,7 @@
 import { CorridorConfig, VerificationClaim } from '../models/corridor';
 import {
   AuthSession,
+  NavigationPoint,
   PersonSnapshot,
   CandidateState,
   ClaimSession,
@@ -16,6 +17,11 @@ import { getNextRoute, getPreviousRoute } from '../navigation/routes';
 
 export type CandidateAction =
   | { type: 'NAVIGATE'; route: Route }
+  | { type: 'RESTORE'; state: CandidateState }
+  | { type: 'RESTORE_LOCATION'; point: NavigationPoint; history: NavigationPoint[] }
+  | { type: 'SET_TOUR_INDEX'; index: number }
+  | { type: 'SET_ENTRY_VIEW'; mode: EntryMode }
+  | { type: 'SAVE_RUNG_DRAFT'; key: string; value?: string; jurisdiction?: string }
   | { type: 'BACK' }
   | { type: 'NEXT' }
   | { type: 'SET_CORRIDOR'; corridor: CorridorConfig }
@@ -48,20 +54,40 @@ function withRung(
   return { ...state, rungs: { ...state.rungs, [key]: { ...existing, ...patch } } };
 }
 
+function visit(state: CandidateState, point: NavigationPoint): CandidateState {
+  return { ...state, ...point, history: [...(state.history ?? []), {
+    route: state.route, tourIndex: state.tourIndex, entryMode: state.entryMode,
+  }].slice(-100) };
+}
+
 export function candidateReducer(
   state: CandidateState = initialCandidateState,
   action: CandidateAction,
 ): CandidateState {
   switch (action.type) {
+    case 'RESTORE':
+      return { ...action.state, corridor: state.corridor, corridorError: state.corridorError };
+    case 'RESTORE_LOCATION':
+      return { ...state, ...action.point, history: action.history };
+    case 'SET_TOUR_INDEX':
+      return visit(state, { route: 'Tour', tourIndex: Math.max(0, action.index), entryMode: state.entryMode });
+    case 'SET_ENTRY_VIEW':
+      return visit(state, { route: 'Entry', entryMode: action.mode, tourIndex: state.tourIndex });
+    case 'SAVE_RUNG_DRAFT':
+      return withRung(state, action.key, { value: action.value, jurisdiction: action.jurisdiction });
     case 'NAVIGATE':
-      return { ...state, route: action.route };
+      return action.route === state.route ? state : visit(state, { route: action.route, tourIndex: state.tourIndex, entryMode: state.entryMode });
     case 'BACK': {
+      if (state.history?.length) {
+        const history = state.history.slice(0, -1);
+        return { ...state, ...state.history[state.history.length - 1], history };
+      }
       const previous = getPreviousRoute(state);
       return previous ? { ...state, route: previous } : state;
     }
     case 'NEXT': {
       const next = getNextRoute(state);
-      return next ? { ...state, route: next } : state;
+      return next ? visit(state, { route: next, tourIndex: state.tourIndex, entryMode: state.entryMode }) : state;
     }
     case 'SET_CORRIDOR':
       return { ...state, corridor: action.corridor, corridorError: undefined };
@@ -119,16 +145,17 @@ export function candidateReducer(
     case 'SUBMIT_RUNG':
       return withRung(state, action.key, {
         state: 'submitted',
+        pending: true,
         value: action.value,
         jurisdiction: action.jurisdiction,
         error: undefined,
       });
     case 'SET_RUNG_STATE':
-      return withRung(state, action.key, { state: action.state, error: action.error });
+      return withRung(state, action.key, { state: action.state, error: action.error, pending: false });
     case 'SKIP_RUNG':
       return withRung(state, action.key, { state: 'skipped' });
     case 'RECORD_CLAIM':
-      return { ...state, claims: [...state.claims, action.claim] };
+      return { ...withRung(state, action.claim.rungKey, { pending: false }), claims: [...state.claims, action.claim] };
     case 'SET_BUILD_STAGE':
       return { ...state, buildStage: action.stage };
     case 'LOGOUT':

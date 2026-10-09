@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import {  StyleSheet, Text, View } from 'react-native';
 import { CandidateState } from '../models/onboarding';
 import { CandidateAction } from '../state/candidateReducer';
@@ -17,7 +17,8 @@ interface Props {
  */
 export function TourScreen({ state, dispatch }: Props) {
   const stops = useMemo(() => buildTour(state.corridor), [state.corridor]);
-  const [index, setIndex] = useState(0);
+  const index = Math.min(state.tourIndex ?? 0, Math.max(0, stops.length - 1));
+  const setIndex = (index: number) => dispatch({ type: 'SET_TOUR_INDEX', index });
   const stop = stops[index];
   const position = tourPosition(stops, index);
   const last = index >= stops.length - 1;
@@ -56,7 +57,7 @@ export function TourScreen({ state, dispatch }: Props) {
 
       <View style={styles.footer}>
         <Button label={last ? 'Get started' : 'Next'} onPress={() => last ? dispatch({ type: 'NEXT' }) : setIndex(index + 1)} />
-        {index > 0 ? <Button label="Previous" variant="quiet" onPress={() => setIndex(index - 1)} /> : null}
+        {index > 0 ? <Button label="Previous" variant="quiet" onPress={() => dispatch({ type: 'BACK' })} /> : null}
         {!last ? <Button label="Skip the tour" variant="quiet" onPress={() => dispatch({ type: 'NEXT' })} /> : null}
       </View>
     </Screen>

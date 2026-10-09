@@ -73,6 +73,7 @@ export function getNextRoute(state: CandidateState): Route | undefined {
 }
 
 export function getPreviousRoute(state: CandidateState): Route | undefined {
+  if (state.history?.length) return state.history[state.history.length - 1]?.route;
   if (state.route === 'Chat') return 'Profile';
   // Profile is home. Back used to lead to the handover screen, which is a
   // one-time moment in signing up — sending a person who opened the app this

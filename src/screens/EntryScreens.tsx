@@ -46,7 +46,8 @@ export function WelcomeScreen({ state, dispatch }: Omit<Props, 'services'>) {
 export function EntryScreen({ state, dispatch, services }: Props) {
   const [email, setEmail] = useState('');
   const [token, setToken] = useState('');
-  const [invitation, setInvitation] = useState(state.entryMode === 'claim');
+  const invitation = state.entryMode === 'claim';
+  const setInvitation = (claim: boolean) => dispatch({ type: 'SET_ENTRY_VIEW', mode: claim ? 'claim' : 'signup' });
   const [busy, setBusy] = useState<'join' | 'claim' | undefined>();
   const [failure, setFailure] = useState<string | undefined>();
 
@@ -178,6 +179,12 @@ export function ClaimCodeScreen({ state, dispatch, services }: Props) {
     }
   }
 
+  if (state.claim?.verified) return (
+    <Screen centred><Title>Email confirmed</Title><Body>Your invitation email has already been confirmed.</Body>
+      <Button label="Continue" onPress={() => dispatch({ type: 'NAVIGATE', route: 'BasicInfo' })} />
+    </Screen>
+  );
+
   return (
     <Screen centred>
       <Title>Check your email</Title>
@@ -254,6 +261,12 @@ export function JoinCodeScreen({ state, dispatch, services }: Props) {
       setFailure('We could not send another code just then.');
     }
   }
+
+  if (state.authSession) return (
+    <Screen centred><Title>Email confirmed</Title><Body>Your email has already been confirmed for this session.</Body>
+      <Button label="Continue" onPress={() => dispatch({ type: 'NAVIGATE', route: 'BasicInfo' })} />
+    </Screen>
+  );
 
   return (
     <Screen centred>
@@ -428,7 +441,7 @@ export function BasicInfoScreen({ state, dispatch, services }: Props) {
 
     const claimToken = state.claim?.claimToken;
     try {
-      if (claimToken) {
+      if (claimToken && !state.authSession) {
         // The invitation path spends the claim here, and that is what mints
         // the session.
         const session = await services.claim.confirm(claimToken, state.person);

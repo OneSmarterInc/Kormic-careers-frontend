@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useReducer } from 'react';
+import { candidateReducer } from '../src/state/candidateReducer';
 import { Text, TextInput } from 'react-native';
 import { EntryScreen, BasicInfoScreen } from '../src/screens/EntryScreens';
 import { ChatScreen } from '../src/screens/ChatScreen';
@@ -16,7 +17,11 @@ describe('theme interaction regressions', () => {
   afterEach(async () => { if (tree) await act(async () => tree.unmount()); });
   it('opens invitation entry without starting authentication', async () => {
     const start = jest.fn();
-    await act(async () => { tree = create(<EntryScreen state={initialCandidateState} dispatch={jest.fn()} services={{ ...mockCandidateServices, claim: { ...mockCandidateServices.claim, start } }} />); });
+    function EntryHarness() {
+      const [state, dispatch] = useReducer(candidateReducer, initialCandidateState);
+      return <EntryScreen state={state} dispatch={dispatch} services={{ ...mockCandidateServices, claim: { ...mockCandidateServices.claim, start } }} />;
+    }
+    await act(async () => { tree = create(<EntryHarness />); });
     await act(async () => tree.root.findByProps({ label: 'Have an invitation?' }).props.onPress());
     expect(tree.root.findByProps({ accessibilityLabel: 'Invitation code' })).toBeTruthy();
     expect(start).not.toHaveBeenCalled();
@@ -27,6 +32,16 @@ describe('theme interaction regressions', () => {
     expect(email.props.editable).toBe(false);
     const checkbox = tree.root.findAllByProps({ accessibilityRole: 'checkbox' })[0];
     expect(checkbox.props.accessibilityState.checked).toBe(false);
+  });
+  it('saves revisited invitation details without redeeming the invitation again', async () => {
+    const confirm = jest.fn();
+    const person = { ...initialCandidateState.person, fullName: 'Test Person', email: 'test@example.com', phone: '123', country: 'US', dateOfBirth: '1990-01-01', screeningConsent: true };
+    const save = jest.fn().mockResolvedValue({ person, claims: [] });
+    const state = { ...initialCandidateState, person, authSession: { personId: 'p1' }, claim: { token: 'invitation', maskedEmail: 't***@example.com', verified: true, claimToken: 'spent-token' } };
+    await act(async () => { tree = create(<BasicInfoScreen state={state} dispatch={jest.fn()} services={{ ...mockCandidateServices, claim: { ...mockCandidateServices.claim, confirm }, person: { ...mockCandidateServices.person, save } }} />); });
+    await act(async () => tree.root.findByProps({ label: 'Continue' }).props.onPress());
+    expect(confirm).not.toHaveBeenCalled();
+    expect(save).toHaveBeenCalled();
   });
   it('retries failed chat history through the existing service', async () => {
     const history = jest.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce([]);

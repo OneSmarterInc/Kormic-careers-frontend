@@ -349,6 +349,7 @@ function IdentitySection({
 }) {
   // Held locally as typed text so a half-entered list is not repeatedly split
   // and rejoined under the person's cursor.
+  const sideBySide = useWindowDimensions().width >= 800;
   const [names, setNames] = useState((person.previousNames ?? []).join(', '));
   const [touched, setTouched] = useState(false);
   const dobProblem = dateOfBirthProblem(person.dateOfBirth);
@@ -358,12 +359,11 @@ function IdentitySection({
     <View style={styles.identity}>
       <Eyebrow>Background checks</Eyebrow>
       <Caption>
-        Checks against public records are searched by name, and names are shared. Your date of
-        birth tells you apart from someone else with the same name — and more often shows that a
-        record we find is not yours.
+        Your date of birth and previous names help distinguish you from people with the same name.
       </Caption>
 
-      <DateField
+      <View style={[styles.identityFields, sideBySide && styles.identityFieldsWide]}>
+      <View style={sideBySide ? styles.dobColumn : styles.fullField}><DateField
         label="Date of birth"
         value={person.dateOfBirth ?? ''}
         max={isoYearsAgo(MIN_AGE_YEARS)}
@@ -374,13 +374,13 @@ function IdentitySection({
           dispatch({ type: 'UPDATE_PERSON', field: 'dateOfBirth', value });
         }}
         error={(touched || showErrors) && dobProblem ? dobProblem : undefined}
-        hint="Used only to tell you apart from someone with the same name. Never shown to a practice."
-      />
+        hint="Never shown to a practice."
+      /></View>
 
-      <Field
+      <View style={sideBySide ? styles.namesColumn : styles.fullField}><Field
         label="Any previous names (optional)"
         value={names}
-        placeholder="Maiden or former names, separated by commas"
+        placeholder="Enter previous names"
         accessibilityLabel="Previous names"
         onChangeText={(text) => {
           setNames(text);
@@ -392,8 +392,9 @@ function IdentitySection({
               .filter((part) => part.length > 0),
           });
         }}
-        hint="A record is filed under the name held at the time, so a former name is worth searching too."
-      />
+        hint="Include maiden or former names, separated by commas."
+      /></View>
+      </View>
 
       <CheckField
         checked={agreed}
@@ -515,5 +516,9 @@ const styles = StyleSheet.create({
   code: { fontSize: 24, letterSpacing: 8, textAlign: 'center' },
   // Set apart from the contact fields, because these are asked for a different
   // reason and the reason is stated above them.
-  identity: { marginTop: spacing.sm, gap: spacing.sm, padding: spacing.md, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.line, borderRadius: radii.card },
+  identityFields: { gap: spacing.md },
+  identityFieldsWide: { flexDirection: 'row', alignItems: 'flex-start' },
+  dobColumn: { width: 300 },
+  namesColumn: { flex: 1, minWidth: 0 },
+  identity: { marginTop: spacing.xs, gap: spacing.sm, padding: spacing.md, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.line, borderRadius: radii.card },
 });

@@ -153,3 +153,12 @@ contact form, Welcome, sign-in, profile-building and long-chat layouts with no
 uncaught errors or horizontal overflow. Chat remains scrollable with a visible
 composer. Screenshots were inspected for desktop/mobile spacing and alignment.
 This is a presentation-only follow-up; APIs, routing and backend are unchanged.
+
+## Compact background-check section
+
+DOB and previous names now share a row at widths of 800px and above, with a
+300px DOB column and flexible names field. Mobile stacks the fields. Repeated
+explanatory text is condensed; the full consent statement, privacy note, human
+review disclosure and validation remain. TypeScript, 197 tests and web export
+passed. Browser checks confirmed aligned desktop inputs and stacked mobile inputs
+with no horizontal overflow or page errors; the rendered desktop layout was reviewed.

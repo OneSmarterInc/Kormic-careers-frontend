@@ -28,12 +28,13 @@
       "expo-secure-store",
       "expo-web-browser",
       "expo-notifications",
-      "expo-document-picker"
+      "expo-document-picker",
+      "@react-native-community/datetimepicker"
     ],
     "extra": {
-      "apiHost": "https://api.kormic.ai",
+      "apiHost": "http://localhost:8900",
       "corridorKey": "sample",
-      "useMocks": true
+      "useMocks": false
     }
   }
 }

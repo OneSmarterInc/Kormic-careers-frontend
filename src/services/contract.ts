@@ -1,4 +1,6 @@
 import {
+  Jurisdiction,
+  ClaimShape,
   ClaimStatus,
   CorridorConfig,
   CorridorRung,
@@ -8,7 +10,7 @@ import {
   VerificationMethod,
   VerificationRoute,
 } from '../models/corridor';
-import { Person } from '../models/onboarding';
+import { Person, PersonSnapshot } from '../models/onboarding';
 import { EscalationStatus, Message, RawMessage, parseMessage } from '../screens/chatModel';
 
 /**
@@ -29,6 +31,8 @@ import { EscalationStatus, Message, RawMessage, parseMessage } from '../screens/
 // --- Endpoints ------------------------------------------------------------
 
 export const endpoints = {
+  /** The person and their claims, in one call. What lets somebody come back. */
+  me: '/api/me/',
   corridor: (key: string) => `/api/corridors/${key}/`,
   // The open front door. Careers is not invitation-only; the claim routes
   // below are the secondary path for when a practice brings a roster.
@@ -59,7 +63,14 @@ export interface WireCorridorRung {
   verifier: string | null;
   /** Null means nobody has established the cost. Read as 'none', never as free. */
   route: VerificationRoute | null;
+  /** Absent on a server that predates the picker; read as "not enumerated". */
+  jurisdictions?: WireJurisdiction[] | null;
   order: number;
+}
+
+export interface WireJurisdiction {
+  code: string;
+  label: string;
 }
 
 export interface WireCorridor {
@@ -79,6 +90,9 @@ export interface WireVerificationClaim {
   checked_at: string | null;
   expires_at: string | null;
   status: ClaimStatus;
+  shape?: ClaimShape | null;
+  source_as_of?: string | null;
+  matched_on?: string[] | null;
 }
 
 export interface WireSignupStart {
@@ -105,6 +119,25 @@ export interface WireSession {
 export interface WireEscalationStatus {
   query_id: string;
   status: EscalationStatus;
+}
+
+export interface WirePerson {
+  person_id: string;
+  full_name: string;
+  email: string;
+  phone: string;
+  city: string;
+  region: string;
+  country: string;
+  agent_name: string | null;
+  date_of_birth?: string | null;
+  previous_names?: string[] | null;
+  screening_consent_at?: string | null;
+}
+
+export interface WireMe {
+  person: WirePerson;
+  claims: WireVerificationClaim[];
 }
 
 export interface WireOAuthAuthorize {
@@ -160,8 +193,26 @@ export function toRung(wire: WireCorridorRung): CorridorRung {
     input: present(wire.input, 'rung.input'),
     verifier: wire.verifier ?? undefined,
     route: wire.route ?? undefined,
+    jurisdictions: toJurisdictions(wire.jurisdictions),
     order: present(wire.order, 'rung.order'),
   };
+}
+
+/**
+ * Absent, null, malformed and empty all become an empty list, and the screen
+ * falls back to a text box.
+ *
+ * Deliberately not `present()`: an unreachable authority list is a reason to
+ * ask the person to type it, not to fail the whole corridor fetch and leave
+ * them looking at an error. Entries missing a code or a label are dropped —
+ * an option that cannot be matched or cannot be read is worse than absent.
+ */
+export function toJurisdictions(wire: WireJurisdiction[] | null | undefined): Jurisdiction[] {
+  if (!Array.isArray(wire)) return [];
+  return wire
+    .filter((entry) => entry && typeof entry.code === 'string' && typeof entry.label === 'string')
+    .filter((entry) => entry.code.trim() !== '' && entry.label.trim() !== '')
+    .map((entry) => ({ code: entry.code.trim(), label: entry.label.trim() }));
 }
 
 export function toVerificationClaim(wire: WireVerificationClaim): VerificationClaim {
@@ -178,6 +229,15 @@ export function toVerificationClaim(wire: WireVerificationClaim): VerificationCl
     checkedAt: present(wire.checked_at, 'claim.checked_at'),
     expiresAt: wire.expires_at,
     status: present(wire.status, 'claim.status'),
+    // Optional at the boundary and defaulted to a fact, unlike the fields
+    // above. An older server does not send these, and the honest reading of
+    // its silence is that everything it sends is a fact — which is true. The
+    // opposite default would relabel every claim a screen and empty the
+    // profile. `present()` would be wrong here for the same reason: a missing
+    // shape is a server that predates the concept, not a broken payload.
+    shape: wire.shape === 'screens' ? 'screens' : 'asserts',
+    sourceAsOf: wire.source_as_of ?? null,
+    matchedOn: Array.isArray(wire.matched_on) ? wire.matched_on : [],
   };
 }
 
@@ -213,6 +273,62 @@ export function toEscalationStatuses(
 
 export function toSignupStart(wire: WireSignupStart): { email: string } {
   return { email: present(wire.email, 'signupStart.email') };
+}
+
+export function toPerson(wire: WirePerson): Person {
+  return {
+    // Identity, so both are required rather than defaulted. A person with no
+    // id is not a person this app can write a claim against.
+    personId: present(wire.person_id, 'person.person_id'),
+    email: present(wire.email, 'person.email'),
+    fullName: wire.full_name ?? '',
+    phone: wire.phone ?? '',
+    city: wire.city ?? '',
+    region: wire.region ?? '',
+    country: wire.country ?? '',
+    // Optional at the boundary, unlike the identity fields above. A server
+    // that has not been taught about them simply does not send them, and
+    // absent is a legitimate answer from the person too.
+    dateOfBirth: wire.date_of_birth ?? undefined,
+    previousNames: Array.isArray(wire.previous_names) ? wire.previous_names : undefined,
+    screeningConsentAt: wire.screening_consent_at ?? null,
+  };
+}
+
+/**
+ * What a person may change about themselves, on the way out.
+ *
+ * The date of birth and previous names were collected on screen and then left
+ * out of this body, so they never reached the server and background checks
+ * waited forever for details the person had already given.
+ *
+ * A date that is not YYYY-MM-DD is left out rather than sent. The server
+ * refuses a malformed date, and that would fail the whole save — losing the
+ * name and phone along with it — over one half-typed field.
+ */
+export function toPersonUpdate(person: Person): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    full_name: person.fullName,
+    phone: person.phone,
+    city: person.city,
+    region: person.region,
+    country: person.country,
+  };
+  const dob = person.dateOfBirth?.trim();
+  if (dob && /^\d{4}-\d{2}-\d{2}$/.test(dob)) body.date_of_birth = dob;
+  if (person.previousNames) body.previous_names = person.previousNames;
+  // A yes or no only. The server stamps the time, so it cannot be backdated
+  // from here.
+  if (person.screeningConsent !== undefined) body.screening_consent = person.screeningConsent;
+  return body;
+}
+
+export function toMe(wire: WireMe): PersonSnapshot {
+  return {
+    person: toPerson(present(wire.person, 'me.person')),
+    claims: present(wire.claims, 'me.claims').map(toVerificationClaim),
+    agentName: wire.person?.agent_name ?? undefined,
+  };
 }
 
 export function toClaimStart(wire: WireClaimStart): { maskedEmail: string } {

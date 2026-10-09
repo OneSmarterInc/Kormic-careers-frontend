@@ -1,18 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useMemo } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { Body, Button, Card, Eyebrow, Screen, Title } from '../ui';
 import { CandidateState } from '../models/onboarding';
 import { CandidateAction } from '../state/candidateReducer';
 import { CandidateServices } from '../services/candidateServices';
 import { colors, radii, spacing, type } from '../theme/tokens';
 import { buildProfileRows } from './profileModel';
-import {
-  MAX_NAVIGATOR_NAME,
-  buildProgress,
-  buildSummaryLine,
-  handoverLines,
-  isNavigatorNameWellFormed,
-  navigatorName,
-} from './agentModel';
+import { buildProgress, buildSummaryLine, handoverLines, navigatorName } from './agentModel';
 
 interface Props {
   state: CandidateState;
@@ -40,8 +34,8 @@ export function BuildingAgentScreen({ state, dispatch, services, stageMs = 900 }
   }, [dispatch, progress.done, state.buildStage, stageMs]);
 
   return (
-    <View style={styles.screen}>
-      <Text style={type.title}>Putting your profile together</Text>
+    <Screen centred scroll={false}>
+      <Title>Putting your profile together</Title>
 
       {progress.done ? (
         <Text style={type.body}>{buildSummaryLine(rows)}</Text>
@@ -55,15 +49,8 @@ export function BuildingAgentScreen({ state, dispatch, services, stageMs = 900 }
         </View>
       )}
 
-      <Pressable
-        style={[styles.primary, !progress.done && styles.primaryBusy]}
-        onPress={() => dispatch({ type: 'NEXT' })}
-        disabled={!progress.done}
-        accessibilityRole="button"
-      >
-        <Text style={styles.primaryLabel}>Continue</Text>
-      </Pressable>
-    </View>
+      <Button label="Continue" onPress={() => dispatch({ type: 'NEXT' })} disabled={!progress.done} />
+    </Screen>
   );
 }
 
@@ -75,90 +62,39 @@ export function AgentLiveScreen({ state, dispatch, services }: Props) {
   const rows = useMemo(() => buildProfileRows(state), [state]);
   const lines = useMemo(() => handoverLines(state, rows), [state, rows]);
 
-  const [name, setName] = useState('');
-  const [saved, setSaved] = useState<string | undefined>();
-  const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState<string | undefined>();
-
-  const displayName = navigatorName(saved);
-
-  async function handleRename() {
-    const next = name.trim();
-    if (!isNavigatorNameWellFormed(next) || busy) return;
-    setBusy(true);
-    setFailure(undefined);
-    try {
-      await services.chat.rename(state.authSession, next);
-      setSaved(next);
-      setName('');
-    } catch {
-      setFailure('That name did not save. Try again.');
-    } finally {
-      setBusy(false);
-    }
-  }
+  // Naming happens on the profile, which is where a person can still reach it
+  // tomorrow. This screen is the introduction, and it is shown once.
+  const displayName = navigatorName(state.agentName);
 
   return (
-    <ScrollView contentContainerStyle={styles.screen}>
-      <Text style={type.title}>Meet your {displayName}</Text>
-      <Text style={type.body}>
+    <Screen>
+      <Title>Meet your {displayName}</Title>
+      <Body>
         It answers questions about this position using what the practice has told us. When the
         answer sits with them, it asks and tells you it is checking.
-      </Text>
+      </Body>
 
       {lines.length > 0 ? (
-        <View style={styles.notes}>
+        <Card>
+          <Eyebrow>Where things stand</Eyebrow>
           {lines.map((line) => (
             <Text key={line} style={type.caption}>
               {line}
             </Text>
           ))}
-        </View>
+        </Card>
       ) : null}
 
-      <View style={styles.field}>
-        <Text style={type.label}>Call it something else</Text>
-        <TextInput
-          style={styles.input}
-          value={name}
-          onChangeText={setName}
-          placeholder={displayName}
-          placeholderTextColor={colors.muted}
-          maxLength={MAX_NAVIGATOR_NAME}
-          accessibilityLabel="Navigator name"
-        />
-        <Pressable
-          onPress={handleRename}
-          disabled={busy || !isNavigatorNameWellFormed(name)}
-          accessibilityRole="button"
-        >
-          <Text
-            style={[
-              styles.inlineAction,
-              (busy || !isNavigatorNameWellFormed(name)) && styles.disabled,
-            ]}
-          >
-            {busy ? 'Saving' : 'Save name'}
-          </Text>
-        </Pressable>
-        {failure ? <Text style={styles.error}>{failure}</Text> : null}
-      </View>
-
-      <Pressable
-        style={styles.primary}
+      <Button
+        label="Ask about this position"
         onPress={() => dispatch({ type: 'NAVIGATE', route: 'Chat' })}
-        accessibilityRole="button"
-      >
-        <Text style={styles.primaryLabel}>Ask about this position</Text>
-      </Pressable>
-
-      <Pressable
+      />
+      <Button
+        label="See your profile"
+        variant="quiet"
         onPress={() => dispatch({ type: 'NAVIGATE', route: 'Profile' })}
-        accessibilityRole="button"
-      >
-        <Text style={styles.secondary}>See your profile</Text>
-      </Pressable>
-    </ScrollView>
+      />
+    </Screen>
   );
 }
 
@@ -171,20 +107,6 @@ const styles = StyleSheet.create({
     borderRadius: radii.card,
     backgroundColor: colors.panel,
   },
-  field: { gap: spacing.xs },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radii.input,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    color: colors.paper,
-    fontFamily: 'Inter_400Regular',
-    backgroundColor: colors.panel,
-  },
-  inlineAction: { ...type.label, color: colors.trustBlue },
-  disabled: { color: colors.muted },
-  error: { ...type.caption, color: colors.error },
   primary: {
     backgroundColor: colors.coral,
     borderRadius: radii.pill,

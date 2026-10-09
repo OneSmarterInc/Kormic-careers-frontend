@@ -37,7 +37,7 @@ export function buildProgress(stages: string[], index: number): BuildProgress {
  * did. `methodLabels` remains the only vocabulary for what was checked.
  */
 export function buildSummaryLine(rows: ProfileRow[]): string {
-  const provided = rows.filter((row) => Boolean(row.claim)).length;
+  const provided = rows.reduce((total, row) => total + row.facts.length, 0);
   if (provided === 0) return 'Nothing to put together yet.';
   return provided === 1
     ? 'One thing you gave us, ready for a practice to read.'
@@ -81,7 +81,7 @@ export function handoverLines(state: CandidateState, rows: ProfileRow[]): string
     );
   }
 
-  const missing = rows.filter((row) => row.requirement === 'required' && !row.claim);
+  const missing = rows.filter((row) => row.requirement === 'required' && row.facts.length === 0);
   if (missing.length > 0) {
     lines.push(`Still needed: ${missing.map((row) => row.displayName).join(', ')}.`);
   }

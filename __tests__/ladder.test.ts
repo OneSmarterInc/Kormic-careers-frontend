@@ -1,11 +1,12 @@
-import { CorridorConfig, awaitsPractice, runsOnJoin } from '../src/models/corridor';
+import { toJurisdictions } from '../src/services/contract';
+import { CorridorConfig, CorridorRung, Jurisdiction, VerificationClaim, awaitsPractice, runsOnJoin } from '../src/models/corridor';
 import { CandidateState, initialCandidateState, rungRoute } from '../src/models/onboarding';
 import { canAdvanceFrom, getProgress, orderedRoutes, skippedRungs } from '../src/navigation/routes';
 import { candidateReducer } from '../src/state/candidateReducer';
 import { sampleCorridor } from '../src/services/candidateServices';
-import { canSkip, canSubmit, errorFor, fieldsFor, oauthResult, rungStateFromClaim, statusLine, submissionSteps } from '../src/screens/rungModel';
+import { OTHER_JURISDICTION, canSkip, canSubmit, errorFor, fieldsFor, filesFor, jurisdictionForSubmission, oauthResult, primaryActionLabel, rungStateFromClaim, statusLine, submissionSteps } from '../src/screens/rungModel';
 import { screenFor } from '../src/navigation/screens';
-import { buildProfileRows, methodCounts, methodLine, outstandingPrompts } from '../src/screens/profileModel';
+import { buildProfileRows, factLabel, methodCounts, methodLine, outstandingPrompts } from '../src/screens/profileModel';
 import { escalationLine, mergeEscalations, openQueryIds, parseMessage } from '../src/screens/chatModel';
 import { buildTour, stepCountLine } from '../src/screens/tourModel';
 import { attemptsLine, claimError, countDivergences, divergenceNote, invitationOnlyNote, isCodeWellFormed, mayShowPrefill, revealableBeforeVerify } from '../src/screens/claimModel';
@@ -24,12 +25,14 @@ function completePerson(state: CandidateState): CandidateState {
     email: 'person@example.com',
     phone: '+1 555 123 4567',
     country: 'United States',
+    dateOfBirth: '1984-02-11',
   };
-  return Object.entries(values).reduce(
+  const filled = Object.entries(values).reduce(
     (next, [field, value]) =>
       candidateReducer(next, { type: 'UPDATE_PERSON', field: field as never, value }),
     state,
   );
+  return candidateReducer(filled, { type: 'SET_SCREENING_CONSENT', agreed: true });
 }
 
 describe('ladder derives from corridor config', () => {
@@ -46,7 +49,7 @@ describe('ladder derives from corridor config', () => {
       ...sampleCorridor,
       rungs: [
         ...sampleCorridor.rungs,
-        { key: 'employment', displayName: 'Work history', requirement: 'required', input: 'document_upload', order: 7 },
+        { key: 'employment', displayName: 'Work history', requirement: 'required', input: 'document_upload', jurisdictions: [], order: 7 },
       ],
     };
     expect(orderedRoutes(withCorridor(extended))).toContain(rungRoute('employment'));
@@ -167,6 +170,46 @@ describe('claim path pins the address', () => {
   });
 });
 
+describe('a restored profile reads from the claims, not from this sitting', () => {
+  const now = new Date('2026-08-11T12:00:00Z');
+
+  function restored(): CandidateState {
+    // What a returning person looks like: claims from the server and no
+    // per-rung progress at all, because they did none of it in this sitting.
+    return candidateReducer(withCorridor(), {
+      type: 'HYDRATE',
+      snapshot: {
+        person: { fullName: 'Sample Person', email: 'p@example.com', phone: '555', city: '', region: '', country: 'US' },
+        claims: [
+          { rungKey: 'licence', factType: 'licence', factValue: 'A1234', method: 'primary_source', status: 'active', checkedAt: '2026-08-01T10:00:00Z' },
+        ],
+        agentName: 'Ada',
+      },
+    });
+  }
+
+  it('keeps the person, the claims and the Navigator name', () => {
+    const state = restored();
+    expect(state.person.fullName).toBe('Sample Person');
+    expect(state.claims).toHaveLength(1);
+    expect(state.agentName).toBe('Ada');
+  });
+
+  it('does not offer to add something already provided', () => {
+    // The rung has no progress in this sitting, so keying the prompt off
+    // rungState alone told a returning person to add their licence again.
+    const rows = buildProfileRows(restored(), now);
+    const licence = rows.find((row) => row.rungKey === 'licence');
+    expect(licence?.methodLine).toContain('Confirmed with the issuing authority');
+    expect(licence?.actionLabel).toBe(undefined);
+  });
+
+  it('still prompts for a rung that genuinely has nothing', () => {
+    const rows = buildProfileRows(restored(), now);
+    expect(rows.find((row) => row.rungKey === 'cv')?.actionLabel).toBe('Add cv');
+  });
+});
+
 describe('verification is per claim', () => {
   it('keeps methods separate rather than rolling them up', () => {
     let state = withCorridor();
@@ -231,6 +274,35 @@ describe('rung screen model', () => {
     expect(canSkip(registry)).toBe(true);
   });
 
+  it('lets a screenshots rung be finished, not only skipped', () => {
+    // attachmentCount was read by canSubmit and set by nothing, so the rung
+    // could never be submitted. A corridor that made it required would have
+    // been unfinishable.
+    const linkedin = sampleCorridor.rungs[5]!;
+    expect(canSubmit(linkedin, {})).toBe(false);
+    expect(canSubmit(linkedin, { attachments: [{ name: 'top.png' }] })).toBe(true);
+  });
+
+  it('hands over every screenshot, not just the first', () => {
+    const linkedin = sampleCorridor.rungs[5]!;
+    const files = filesFor(linkedin, {
+      attachments: [{ name: 'top.png' }, { name: 'experience.png' }],
+    });
+    expect(files.map((f) => f.name)).toEqual(['top.png', 'experience.png']);
+    expect(submissionSteps(linkedin, { attachments: [{ name: 'top.png' }] })).toEqual([
+      'upload',
+      'submit',
+    ]);
+  });
+
+  it('reads the label off the draft, so it changes as screenshots are added', () => {
+    const linkedin = sampleCorridor.rungs[5]!;
+    expect(primaryActionLabel(linkedin, undefined, {})).toBe('Add screenshots');
+    expect(primaryActionLabel(linkedin, undefined, { attachments: [{ name: 'top.png' }] })).toBe(
+      'Continue',
+    );
+  });
+
   it('uploads the file before writing the claim, never after', () => {
     // A claim recorded against a document that never arrived is the half-truth
     // the verification model exists to avoid, so the order is a rule.
@@ -260,7 +332,7 @@ describe('rung screen model', () => {
     // The server may complete the handshake after the client stops asking, so
     // calling it failed would send the person back to the start of a rung that
     // is about to succeed.
-    const github = { key: 'github', displayName: 'GitHub', requirement: 'optional' as const, input: 'oauth' as const, order: 4 };
+    const github = { key: 'github', displayName: 'GitHub', requirement: 'optional' as const, input: 'oauth' as const, jurisdictions: [], order: 4 };
     expect(oauthResult(github, undefined).rungState).toBe('checking');
     expect(oauthResult(github, 'error').rungState).toBe('unsubmitted');
     expect(oauthResult(github, 'connected').rungState).toBe('confirmed');
@@ -346,6 +418,129 @@ describe('profile shows facts separately', () => {
 
 // --- chat and escalation --------------------------------------------------
 
+describe('a rung can establish more than one fact', () => {
+  const now = new Date('2026-08-13T12:00:00Z');
+
+  function claim(factType: string, value: string, method: 'primary_source' | 'source_checked' | 'self_attested', status: 'active' | 'superseded' = 'active') {
+    return {
+      rungKey: 'cv', factType, factValue: value, method, status,
+      checkedAt: '2026-08-12T10:00:00Z',
+    } as const;
+  }
+
+  function withFacts() {
+    // What a resume parser produces: one document, several facts, each with
+    // its own method.
+    return [
+      claim('full_name', 'Sample Person', 'source_checked'),
+      claim('institution', 'Somewhere University', 'source_checked'),
+      claim('skills', 'Triage, Phlebotomy', 'source_checked'),
+    ].reduce(
+      (state, entry) => candidateReducer(state, { type: 'RECORD_CLAIM', claim: entry }),
+      withCorridor(),
+    );
+  }
+
+  it('shows every fact, not just the first', () => {
+    const cv = buildProfileRows(withFacts(), now).find((row) => row.rungKey === 'cv');
+    expect(cv?.facts.map((fact) => fact.factType).sort()).toEqual([
+      'full_name',
+      'institution',
+      'skills',
+    ]);
+  });
+
+  it('counts facts rather than rungs, because each carries its own method', () => {
+    // A rung that established three things has told a practice three things.
+    const counts = methodCounts(buildProfileRows(withFacts(), now));
+    expect(counts.source_checked).toBe(3);
+  });
+
+  it('keeps the strongest claim when two describe the same fact', () => {
+    let state = withFacts();
+    state = candidateReducer(state, {
+      type: 'RECORD_CLAIM',
+      claim: claim('institution', 'Somewhere University', 'primary_source'),
+    });
+    const cv = buildProfileRows(state, now).find((row) => row.rungKey === 'cv');
+    const institution = cv?.facts.find((fact) => fact.factType === 'institution');
+    expect(institution?.claim.method).toBe('primary_source');
+    expect(cv?.facts.filter((fact) => fact.factType === 'institution')).toHaveLength(1);
+  });
+
+  it('leaves a superseded claim out entirely', () => {
+    let state = withFacts();
+    state = candidateReducer(state, {
+      type: 'RECORD_CLAIM',
+      claim: claim('retired', 'Old', 'self_attested', 'superseded'),
+    });
+    const cv = buildProfileRows(state, now).find((row) => row.rungKey === 'cv');
+    expect(cv?.facts.map((fact) => fact.factType)).not.toContain('retired');
+  });
+
+  it('leaves a list screen out of the facts entirely', () => {
+    // An exclusion screen is legitimately primary_source — the list's
+    // publisher really was asked. This row ranks by method, so left in it
+    // would sort above every real credential and render as 'Confirmed with
+    // the issuing authority' for having found nothing.
+    let state = withFacts();
+    state = candidateReducer(state, {
+      type: 'RECORD_CLAIM',
+      claim: {
+        ...claim('oig_exclusion', 'no_match', 'primary_source'),
+        shape: 'screens',
+        sourceAsOf: '2026-08-01',
+        matchedOn: ['full_name', 'npi'],
+      },
+    });
+
+    const cv = buildProfileRows(state, now).find((row) => row.rungKey === 'cv');
+    expect(cv?.facts.map((fact) => fact.factType)).not.toContain('oig_exclusion');
+    // ...and the facts that were there still read as what they are.
+    expect(cv?.facts.every((fact) => fact.claim.method === 'source_checked')).toBe(true);
+  });
+
+  it('treats a claim with no shape as a fact, not a screen', () => {
+    // An older server does not send the field. Reading its silence as a
+    // screen would empty the profile.
+    const cv = buildProfileRows(withFacts(), now).find((row) => row.rungKey === 'cv');
+    expect(cv?.facts).toHaveLength(3);
+  });
+
+  it('keeps previous names as a list, not as the text that was typed', () => {
+    // The screen splits on commas; the reducer stores what a screen can search
+    // on. Storing the raw string would send "Smith, Jones" as one name.
+    const state = candidateReducer(withCorridor(), {
+      type: 'UPDATE_PREVIOUS_NAMES',
+      names: ['Shelley Smith', 'Shelley Jones'],
+    });
+    expect(state.person.previousNames).toEqual(['Shelley Smith', 'Shelley Jones']);
+  });
+
+  it('leaves the rest of the person alone when previous names change', () => {
+    let state = candidateReducer(withCorridor(), {
+      type: 'UPDATE_PERSON',
+      field: 'fullName',
+      value: 'Shelley Akey',
+    });
+    state = candidateReducer(state, { type: 'UPDATE_PREVIOUS_NAMES', names: ['Shelley Smith'] });
+    expect(state.person.fullName).toBe('Shelley Akey');
+  });
+
+  it('names the fact readably without a table of credential names', () => {
+    // A hardcoded vocabulary here would be the client knowing what a
+    // credential is called, which is the one rule this codebase does not bend.
+    expect(factLabel('work_experience_months')).toBe('Work experience months');
+    expect(factLabel('full_name')).toBe('Full name');
+  });
+
+  it('still prompts for a required rung that established nothing', () => {
+    const rows = buildProfileRows(withFacts(), now);
+    expect(outstandingPrompts(rows)).toContain('Licence');
+    expect(outstandingPrompts(rows)).not.toContain('CV');
+  });
+});
+
 describe('escalation survives the client', () => {
   const now = new Date('2026-08-07T12:00:00Z');
 
@@ -420,7 +615,7 @@ describe('the tour is generated from the corridor', () => {
   it('changes with the corridor rather than being written copy', () => {
     const narrow: CorridorConfig = {
       ...sampleCorridor,
-      rungs: [{ key: 'cv', displayName: 'CV', requirement: 'required', input: 'document_upload', order: 1 }],
+      rungs: [{ key: 'cv', displayName: 'CV', requirement: 'required', input: 'document_upload', jurisdictions: [], order: 1 }],
     };
     const stops = buildTour(narrow);
     expect(stops.find((stop) => stop.key === 'steps')?.items).toEqual(['CV']);
@@ -498,8 +693,8 @@ describe('the wire contract holds the boundary', () => {
       key: 'sample',
       display_name: 'Sample corridor',
       rungs: [
-        { key: 'licence', display_name: 'Licence', requirement: 'required', input: 'identifier_with_jurisdiction', verifier: 'licence_bot', route: 'paid', order: 1 },
-        { key: 'cv', display_name: 'CV', requirement: 'required', input: 'document_upload', verifier: null, route: null, order: 2 },
+        { key: 'licence', display_name: 'Licence', requirement: 'required', input: 'identifier_with_jurisdiction', verifier: 'licence_bot', route: 'paid', jurisdictions: [], order: 1 },
+        { key: 'cv', display_name: 'CV', requirement: 'required', input: 'document_upload', verifier: null, route: null, jurisdictions: [], order: 2 },
       ],
     });
     expect(corridor.displayName).toBe('Sample corridor');
@@ -645,8 +840,8 @@ describe('a paid check waits for a practice to decide', () => {
       key: 'sample',
       display_name: 'Sample corridor',
       rungs: [
-        { key: 'a', display_name: 'A', requirement: 'required', input: 'identifier', verifier: 'bot', route: 'free', order: 1 },
-        { key: 'b', display_name: 'B', requirement: 'required', input: 'identifier', verifier: 'bot', route: null, order: 2 },
+        { key: 'a', display_name: 'A', requirement: 'required', input: 'identifier', verifier: 'bot', route: 'free', jurisdictions: [], order: 1 },
+        { key: 'b', display_name: 'B', requirement: 'required', input: 'identifier', verifier: 'bot', route: null, jurisdictions: [], order: 2 },
       ],
     });
     expect(corridor.rungs[0]?.route).toBe('free');
@@ -666,5 +861,112 @@ describe('the rung state matches what is happening', () => {
     expect(statusLine(licence, { state: 'submitted' }, [])).toBe(
       'Saved. A practice can have this confirmed when they take you forward.',
     );
+  });
+});
+
+describe('jurisdiction picker', () => {
+  const withJurisdictions = (jurisdictions: Jurisdiction[]): CorridorRung => ({
+    key: 'licence',
+    displayName: 'Licence',
+    requirement: 'required',
+    input: 'identifier_with_jurisdiction',
+    jurisdictions,
+    order: 1,
+  });
+
+  const listed: Jurisdiction[] = [
+    { code: 'GB', label: 'United Kingdom (NMC)' },
+    { code: 'US-CA', label: 'California, USA' },
+  ];
+
+  it('offers a picker when the corridor enumerated the places', () => {
+    const field = fieldsFor(withJurisdictions(listed)).find((f) => f.key === 'jurisdiction');
+    expect(field?.choices).toEqual(listed);
+    // The old label asked for "the body that issued it", which invited an
+    // answer the server's directory could never match.
+    expect(field?.label).toBe('Where it was issued');
+  });
+
+  it('falls back to a text box when it did not', () => {
+    const field = fieldsFor(withJurisdictions([])).find((f) => f.key === 'jurisdiction');
+    expect(field?.choices).toBeUndefined();
+  });
+
+  it('will not submit on "somewhere else" alone', () => {
+    const rung = withJurisdictions(listed);
+    expect(canSubmit(rung, { value: 'X1', jurisdiction: OTHER_JURISDICTION })).toBe(false);
+    expect(
+      canSubmit(rung, { value: 'X1', jurisdiction: OTHER_JURISDICTION, jurisdictionOther: 'Kerala' }),
+    ).toBe(true);
+  });
+
+  it('sends the typed place rather than the sentinel', () => {
+    // "__other__" is a UI affordance, not a place. Letting it reach the server
+    // would create a claim against a jurisdiction that does not exist.
+    expect(
+      jurisdictionForSubmission({ jurisdiction: OTHER_JURISDICTION, jurisdictionOther: ' Kerala ' }),
+    ).toBe('Kerala');
+    expect(jurisdictionForSubmission({ jurisdiction: 'GB' })).toBe('GB');
+  });
+
+  it('sends a chosen code, never its label', () => {
+    // The code is matched; the label is only ever read by a person.
+    expect(jurisdictionForSubmission({ jurisdiction: 'US-CA' })).toBe('US-CA');
+  });
+
+  it('survives a server that omits or malforms the list', () => {
+    expect(toJurisdictions(undefined)).toEqual([]);
+    expect(toJurisdictions(null)).toEqual([]);
+    // An option with no code cannot be matched; one with no label cannot be
+    // read. Both are dropped rather than shown as a broken row.
+    expect(
+      toJurisdictions([
+        { code: 'GB', label: 'United Kingdom' },
+        { code: '', label: 'Nowhere' },
+        { code: 'X', label: '' },
+      ] as never),
+    ).toEqual([{ code: 'GB', label: 'United Kingdom' }]);
+  });
+});
+
+describe('getting back into a rung you already answered', () => {
+  const corridor: CorridorConfig = {
+    key: 'sample',
+    displayName: 'Sample',
+    rungs: [
+      {
+        key: 'licence', displayName: 'Licence', requirement: 'required',
+        input: 'identifier_with_jurisdiction', jurisdictions: [], order: 1,
+      },
+    ],
+  };
+
+  const withClaim = (method: VerificationClaim['method']): CandidateState => ({
+    ...initialCandidateState,
+    corridor,
+    claims: [
+      {
+        rungKey: 'licence', factType: 'licence', factValue: 'RN-OK-1234',
+        method, status: 'active', checkedAt: '2026-08-24T00:00:00Z',
+      } as VerificationClaim,
+    ],
+  });
+
+  it('offers a way back when nothing has been checked', () => {
+    // The bug: once any claim existed the profile showed no action at all, so
+    // a mistyped licence number could never be corrected by the person who
+    // mistyped it.
+    expect(buildProfileRows(withClaim('self_attested'))[0]?.actionLabel).toBe('Update this');
+  });
+
+  it('does not offer one once an issuing body has confirmed it', () => {
+    // The register is the authority on the value at that point; changing it is
+    // a different conversation from fixing your own typing.
+    expect(buildProfileRows(withClaim('primary_source'))[0]?.actionLabel).toBeUndefined();
+    expect(buildProfileRows(withClaim('source_checked'))[0]?.actionLabel).toBeUndefined();
+  });
+
+  it('still offers to add a rung with nothing on it', () => {
+    expect(buildProfileRows({ ...initialCandidateState, corridor })[0]?.actionLabel).toBe('Add licence');
   });
 });

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CandidateState } from '../models/onboarding';
 import { CandidateServices } from '../services/candidateServices';
-import { colors, radii, spacing, type } from '../theme/tokens';
+import { colors, layout, radii, spacing, type } from '../theme/tokens';
 import { Message, escalationLine, mergeEscalations, openQueryIds } from './chatModel';
 
 interface Props {
@@ -144,13 +144,31 @@ export function ChatScreen({ state, services, pollMs = 15000, onVisibilityChange
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.ink },
-  thread: { padding: spacing.lg, gap: spacing.sm },
-  bubble: { padding: spacing.md, borderRadius: radii.card, maxWidth: '86%', gap: spacing.xs },
-  person: { alignSelf: 'flex-end', backgroundColor: colors.panel },
-  navigator: { alignSelf: 'flex-start', backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.line },
+  thread: {
+    padding: layout.gutter,
+    gap: spacing.sm,
+    width: '100%',
+    maxWidth: layout.maxWidth,
+    alignSelf: 'center',
+  },
+  bubble: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, borderRadius: radii.card, maxWidth: '86%', gap: spacing.xs },
+  person: {
+    alignSelf: 'flex-end',
+    backgroundColor: colors.coralWash,
+    borderWidth: 1,
+    borderColor: 'rgba(255,107,74,0.25)',
+    borderBottomRightRadius: radii.sm,
+  },
+  navigator: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderBottomLeftRadius: radii.sm,
+  },
   escalation: { ...type.caption, color: colors.coral },
   answered: { color: colors.trustBlue },
-  error: { ...type.caption, color: colors.error, paddingHorizontal: spacing.lg },
+  error: { ...type.caption, color: colors.error, paddingHorizontal: spacing.lg, textAlign: 'center' },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -158,6 +176,9 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.line,
+    width: '100%',
+    maxWidth: layout.maxWidth,
+    alignSelf: 'center',
   },
   input: {
     flex: 1,

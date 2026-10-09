@@ -12,7 +12,10 @@ export type RungInput =
   | 'identifier_with_jurisdiction' // a number plus the body that issued it
   | 'oauth' // server-driven third-party login
   | 'document_upload'
-  | 'screenshots';
+  | 'screenshots'
+  // Nothing for the person to hand in: a background check run from details we
+  // already hold. Never a step on the ladder; shown under background checks.
+  | 'automatic';
 
 /**
  * Whether reaching this rung's authority costs money.
@@ -27,6 +30,20 @@ export type RungInput =
  */
 export type VerificationRoute = 'free' | 'paid' | 'none';
 
+/**
+ * Somewhere a credential can be issued.
+ *
+ * `code` is matched against the server's authority directory and is never
+ * shown; `label` is shown and never matched. Keeping them apart is the point —
+ * the field used to be free text asking for "the body that issued it", so a
+ * person typing exactly what was asked for produced something the lookup could
+ * never find.
+ */
+export interface Jurisdiction {
+  code: string;
+  label: string;
+}
+
 export interface CorridorRung {
   key: RungKey;
   displayName: string;
@@ -35,6 +52,12 @@ export interface CorridorRung {
   /** Which helper bot services this rung, if any. Undefined means self-attested only. */
   verifier?: string;
   route?: VerificationRoute;
+  /**
+   * Where this credential may be issued. Empty when the corridor has not
+   * enumerated them, and the screen falls back to a text box — a rung stays
+   * usable before anyone has done that research.
+   */
+  jurisdictions: Jurisdiction[];
   order: number;
 }
 
@@ -55,6 +78,19 @@ export type VerificationMethod =
 export type ClaimStatus = 'active' | 'expired' | 'superseded' | 'failed' | 'disputed';
 
 /**
+ * What kind of statement a claim makes. Orthogonal to `method`, which says how
+ * good the source was.
+ *
+ * A `screens` claim is the result of searching a list for the person — a
+ * federal exclusion check, a debarment check. It is legitimately
+ * `primary_source`, because the list's publisher really was asked, so `method`
+ * alone cannot tell it apart from a confirmed credential. Every ranking in this
+ * app orders by method, which means without this field an absence of bad news
+ * sorts to the top and renders as 'Confirmed with the issuing authority'.
+ */
+export type ClaimShape = 'asserts' | 'screens';
+
+/**
  * One row per fact. There is deliberately no profile-level `verified` boolean
  * anywhere in this app, and no function that computes one.
  */
@@ -69,6 +105,20 @@ export interface VerificationClaim {
   checkedAt?: string;
   expiresAt?: string | null;
   status: ClaimStatus;
+  /**
+   * Absent means a fact, and that is the honest default rather than a
+   * convenience: a server that has not been taught about screens only ever
+   * sends facts. Defaulting the other way would relabel every claim a screen
+   * and empty the profile. Read it as `claim.shape === 'screens'`, which is
+   * correct for undefined without anyone having to remember a fallback.
+   */
+  shape?: ClaimShape;
+  /** For a screen: the date of the data searched, which is not the date it was
+   *  searched. A monthly file read today answers a question about last month. */
+  sourceAsOf?: string | null;
+  /** For a screen: the identifiers it searched on. The difference between a
+   *  weak miss and a strong one. */
+  matchedOn?: string[];
 }
 
 /** Display text for a method. The app never substitutes a looser word. */
@@ -82,6 +132,16 @@ export const methodLabels: Record<VerificationMethod, string> = {
 export function applicableRungs(corridor: CorridorConfig): CorridorRung[] {
   return corridor.rungs
     .filter((rung) => rung.requirement !== 'not_applicable')
+    // A background check asks the person for nothing, so it is not a step.
+    // Left in, the ladder would stop on a screen with no field to fill.
+    .filter((rung) => rung.input !== 'automatic')
+    .sort((a, b) => a.order - b.order);
+}
+
+/** The checks run from details we already hold, in corridor order. */
+export function backgroundCheckRungs(corridor: CorridorConfig): CorridorRung[] {
+  return corridor.rungs
+    .filter((rung) => rung.requirement !== 'not_applicable' && rung.input === 'automatic')
     .sort((a, b) => a.order - b.order);
 }
 

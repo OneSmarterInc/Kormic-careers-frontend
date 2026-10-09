@@ -10,6 +10,7 @@ import {
   WireClaimStart,
   WireClaimVerify,
   WireEscalationStatus,
+  WireMe,
   WireMessage,
   WireOAuthAuthorize,
   WireOAuthStatus,
@@ -22,8 +23,10 @@ import {
   toClaimVerify,
   toCorridor,
   toEscalationStatuses,
+  toMe,
   toMessage,
   toOAuthStatus,
+  toPersonUpdate,
   toSession,
   toSignupStart,
   toVerificationClaim,
@@ -70,6 +73,10 @@ export function createLiveCandidateServices(deps: LiveServiceDeps): CandidateSer
     fetchImpl: deps.fetchImpl,
     onSessionLost: deps.onSessionLost,
   });
+
+  // Built once and shared: sign-out needs to unregister the device, so it
+  // cannot be constructed inline at the point it is returned.
+  const notifications = createNotificationService(api);
 
   return {
     api,
@@ -220,19 +227,49 @@ export function createLiveCandidateServices(deps: LiveServiceDeps): CandidateSer
         });
         const asset = result.canceled ? undefined : result.assets[0];
         if (!asset) throw new ApiError('bad_code', 0, 'No file chosen.');
-        return { name: asset.name, uri: asset.uri, mimeType: asset.mimeType };
+        return { name: asset.name, uri: asset.uri, mimeType: asset.mimeType, file: asset.file };
       },
 
-      async upload(_session, rungKey, file) {
-        if (!file.uri) throw new ApiError('bad_code', 0, 'That file could not be read.');
+      async pickMany() {
+        // Images only, and several. A LinkedIn profile does not fit in one
+        // screenshot, which is why the rung asks for a set rather than a file.
+        const result = await DocumentPicker.getDocumentAsync({
+          type: ['image/*'],
+          copyToCacheDirectory: true,
+          multiple: true,
+        });
+        if (result.canceled) return [];
+        return result.assets.map((asset) => ({
+          name: asset.name,
+          uri: asset.uri,
+          mimeType: asset.mimeType,
+          file: asset.file,
+        }));
+      },
+
+      async upload(_session, corridorKey, rungKey, file) {
         const form = new FormData();
-        // React Native's FormData takes a {uri, name, type} descriptor rather
-        // than a Blob. The cast is the platform difference, not a type hole.
-        form.append('file', {
-          uri: file.uri,
-          name: file.name,
-          type: 'application/octet-stream',
-        } as unknown as Blob);
+
+        if (file.file) {
+          // Web. A real File, appended with its name so the server sees a file
+          // part rather than a text field.
+          form.append('file', file.file, file.name);
+        } else if (file.uri) {
+          // Native. React Native's FormData understands this descriptor and
+          // the browser's does not, which is why the two are not interchangeable.
+          form.append('file', {
+            uri: file.uri,
+            name: file.name,
+            type: file.mimeType || 'application/octet-stream',
+          } as unknown as Blob);
+        } else {
+          throw new ApiError('bad_code', 0, 'That file could not be read.');
+        }
+
+        // Named rather than inferred, for the same reason the submission names
+        // it: a rung key is only unique within a corridor.
+        form.append('corridor_key', corridorKey);
+
         await api.send<void>({
           path: endpoints.rungDocument(rungKey),
           method: 'POST',
@@ -286,7 +323,39 @@ export function createLiveCandidateServices(deps: LiveServiceDeps): CandidateSer
       },
     },
 
-    notifications: createNotificationService(api),
+    person: {
+      async load() {
+        return toMe(await api.send<WireMe>({ path: endpoints.me }));
+      },
+      async save(_session, person) {
+        // Email is absent on purpose. It is what the session was minted
+        // against, and the server refuses it for the same reason.
+        return toMe(
+          await api.send<WireMe>({
+            path: endpoints.me,
+            method: 'PATCH',
+            body: toPersonUpdate(person),
+          }),
+        );
+      },
+    },
+
+    session: {
+      async signOut(session) {
+        // Best effort, and in this order: tell the server to stop notifying
+        // this device while the token still works, then forget the token. The
+        // reverse order would leave a device registered against a session
+        // nobody can reach to unregister.
+        try {
+          await notifications.unregister(session);
+        } catch {
+          /* a device we cannot unregister is not worth failing a sign-out for */
+        }
+        await api.signOut();
+      },
+    },
+
+    notifications,
 
     buildAgent: {
       stages: ['Reading your profile', 'Checking what you gave us', 'Putting it together'],

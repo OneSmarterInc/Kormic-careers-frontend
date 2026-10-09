@@ -1,6 +1,7 @@
 import { applicableRungs, findRung } from '../models/corridor';
 import {
   CandidateState,
+  PersonSnapshot,
   Route,
   isPersonComplete,
   rungKeyOf,
@@ -24,6 +25,40 @@ export function orderedRoutes(state: CandidateState): Route[] {
   return [...head, ...rungs, 'BuildingAgent', 'AgentLive'];
 }
 
+/**
+ * Where the app opens.
+ *
+ * The welcome screen and the tour are an introduction, and an introduction is
+ * something you give somebody once. A person who has been here before and
+ * signed out is not a stranger who needs the pitch again — they want the door.
+ * Somebody with a live session does not want either; they want their profile.
+ *
+ * Pure, so the rule is one thing in one place rather than a route decision
+ * spread across a boot effect and a reducer case.
+ */
+export function openingRoute(device: { signedIn: boolean; seenIntro: boolean }): Route {
+  if (device.signedIn) return 'Profile';
+  if (device.seenIntro) return 'Entry';
+  return 'Welcome';
+}
+
+/**
+ * Where a person goes once the code has checked out.
+ *
+ * The same door signs in and signs up — the code cannot tell us which just
+ * happened, so we look at what came back. Somebody whose details are already
+ * on file has been here before and wants their profile, not a form asking for
+ * a name we already know.
+ *
+ * "Already on file" is the person's own details rather than their claims. A
+ * person who filled the form and stopped before a single rung is still a
+ * returning person, and the profile tells them what is outstanding.
+ */
+export function routeAfterSignIn(snapshot: PersonSnapshot | undefined): Route {
+  if (snapshot && isPersonComplete(snapshot.person)) return 'Profile';
+  return 'BasicInfo';
+}
+
 /** What the progress bar counts: the person's own work, not the frame. */
 export function countedRoutes(state: CandidateState): Route[] {
   return orderedRoutes(state).filter(
@@ -39,7 +74,11 @@ export function getNextRoute(state: CandidateState): Route | undefined {
 
 export function getPreviousRoute(state: CandidateState): Route | undefined {
   if (state.route === 'Chat') return 'Profile';
-  if (state.route === 'Profile') return 'AgentLive';
+  // Profile is home. Back used to lead to the handover screen, which is a
+  // one-time moment in signing up — sending a person who opened the app this
+  // morning back to "Meet your Navigator" is not a back button, it is a
+  // detour into somebody else's first day.
+  if (state.route === 'Profile') return undefined;
   const routes = orderedRoutes(state);
   const index = routes.indexOf(state.route);
   return index > 0 ? routes[index - 1] : undefined;

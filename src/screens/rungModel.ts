@@ -1,11 +1,13 @@
 import {
   CorridorRung,
+  Jurisdiction,
   VerificationClaim,
   awaitsPractice,
   methodLabels,
   runsOnJoin,
 } from '../models/corridor';
 import { RungProgress, RungState } from '../models/onboarding';
+import { PickedFile } from '../services/candidateServices';
 
 /**
  * Everything the rung screen needs to decide, as pure functions. The component
@@ -13,19 +15,35 @@ import { RungProgress, RungState } from '../models/onboarding';
  * without a renderer, the way the student app tests gates rather than pixels.
  */
 
+/** The option that keeps a person moving when their authority is not listed. */
+export const OTHER_JURISDICTION = '__other__';
+
 export interface RungField {
   key: 'value' | 'jurisdiction';
   label: string;
   placeholder: string;
+  /**
+   * Present when the corridor enumerated the choices, and the screen renders a
+   * picker rather than a text box. Absent means free text.
+   */
+  choices?: Jurisdiction[];
 }
 
 export interface RungDraft {
   value?: string;
   jurisdiction?: string;
+  /** Only meaningful while `jurisdiction` is OTHER_JURISDICTION. */
+  jurisdictionOther?: string;
   documentName?: string;
   /** Held only long enough to upload. The file itself never enters app state. */
   documentUri?: string;
-  attachmentCount?: number;
+  /** On web the picker hands back a File, and FormData needs that, not the uri. */
+  documentFile?: File;
+  /**
+   * For a rung that asks for screenshots. A LinkedIn profile does not fit in
+   * one image, so this is a set the person builds up and can prune.
+   */
+  attachments?: PickedFile[];
 }
 
 /** Copy comes from the corridor's own words, never from a hard-coded credential name. */
@@ -33,14 +51,38 @@ export function fieldsFor(rung: CorridorRung): RungField[] {
   switch (rung.input) {
     case 'identifier':
       return [{ key: 'value', label: `${rung.displayName} number`, placeholder: 'As it appears on the record' }];
-    case 'identifier_with_jurisdiction':
+    case 'identifier_with_jurisdiction': {
+      const choices = rung.jurisdictions ?? [];
       return [
         { key: 'value', label: `${rung.displayName} number`, placeholder: 'As it appears on the record' },
-        { key: 'jurisdiction', label: 'Issued by', placeholder: 'The body that issued it' },
+        {
+          key: 'jurisdiction',
+          // "Where" rather than the old "Issued by". The value is matched
+          // against a directory of places, and asking for the body invited
+          // "Nursing and Midwifery Council" — a perfectly sensible answer that
+          // the lookup could never resolve.
+          label: 'Where it was issued',
+          placeholder: choices.length > 0 ? 'Choose one' : 'Country or state',
+          ...(choices.length > 0 ? { choices } : {}),
+        },
       ];
+    }
     default:
       return [];
   }
+}
+
+/**
+ * What actually goes on the wire for the jurisdiction.
+ *
+ * "Other" is a UI affordance, not a place, so it is sent as blank. The server
+ * then finds no authority and records the claim as self_attested — which is
+ * exactly right for somewhere we cannot check, and better than blocking
+ * somebody whose regulator nobody has integrated yet.
+ */
+export function jurisdictionForSubmission(draft: RungDraft): string | undefined {
+  if (draft.jurisdiction === OTHER_JURISDICTION) return draft.jurisdictionOther?.trim() || '';
+  return draft.jurisdiction;
 }
 
 export function canSubmit(rung: CorridorRung, draft: RungDraft): boolean {
@@ -48,11 +90,14 @@ export function canSubmit(rung: CorridorRung, draft: RungDraft): boolean {
     case 'identifier':
       return Boolean(draft.value?.trim());
     case 'identifier_with_jurisdiction':
-      return Boolean(draft.value?.trim() && draft.jurisdiction?.trim());
+      if (!draft.value?.trim() || !draft.jurisdiction?.trim()) return false;
+      // Picking "Somewhere else" is a question, not an answer — the person
+      // still has to say where before this can be submitted.
+      return draft.jurisdiction !== OTHER_JURISDICTION || Boolean(draft.jurisdictionOther?.trim());
     case 'document_upload':
       return Boolean(draft.documentName);
     case 'screenshots':
-      return (draft.attachmentCount ?? 0) > 0;
+      return filesFor(rung, draft).length > 0;
     case 'oauth':
       return false; // the server drives this one; the button is not a submit
     default:
@@ -60,15 +105,22 @@ export function canSubmit(rung: CorridorRung, draft: RungDraft): boolean {
   }
 }
 
-export function primaryActionLabel(rung: CorridorRung, progress?: RungProgress): string {
+export function primaryActionLabel(
+  rung: CorridorRung,
+  progress?: RungProgress,
+  draft?: RungDraft,
+): string {
   if (progress?.state === 'needs_attention') return 'Answer the question';
   switch (rung.input) {
     case 'oauth':
       return `Connect ${rung.displayName}`;
     case 'document_upload':
-      return progress?.documentName ? 'Continue' : 'Choose a file';
+      return draft?.documentName || progress?.documentName ? 'Continue' : 'Choose a file';
     case 'screenshots':
-      return (progress?.state ?? 'unsubmitted') === 'unsubmitted' ? 'Add screenshots' : 'Continue';
+      // Reads the draft, not the rung's progress. Keying it off progress meant
+      // the label never changed as screenshots were added, because nothing
+      // moved the rung's state until it was submitted.
+      return (draft?.attachments?.length ?? 0) > 0 ? 'Continue' : 'Add screenshots';
     default:
       return 'Continue';
   }
@@ -91,8 +143,24 @@ export type SubmissionStep = 'upload' | 'submit';
  * it lives here where a test can hold it.
  */
 export function submissionSteps(rung: CorridorRung, draft: RungDraft): SubmissionStep[] {
-  if (rung.input === 'document_upload' && draft.documentName) return ['upload', 'submit'];
-  return ['submit'];
+  return filesFor(rung, draft).length > 0 ? ['upload', 'submit'] : ['submit'];
+}
+
+/**
+ * Which files this rung hands over, in order.
+ *
+ * One place, so the screen does not have to know that a document rung carries
+ * a single file on one pair of fields and a screenshots rung carries a list on
+ * another.
+ */
+export function filesFor(rung: CorridorRung, draft: RungDraft): PickedFile[] {
+  if (rung.input === 'document_upload') {
+    return draft.documentName
+      ? [{ name: draft.documentName, uri: draft.documentUri, file: draft.documentFile }]
+      : [];
+  }
+  if (rung.input === 'screenshots') return draft.attachments ?? [];
+  return [];
 }
 
 /**
@@ -189,7 +257,7 @@ export function errorFor(rung: CorridorRung, draft: RungDraft, touched: boolean)
     case 'document_upload':
       return 'Choose a PDF or Word file.';
     case 'screenshots':
-      return 'Add at least one screenshot.';
+      return 'Add at least one screenshot of your profile.';
     default:
       return undefined;
   }

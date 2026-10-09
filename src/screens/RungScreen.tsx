@@ -1,17 +1,33 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Body,
+  Button,
+  Caption,
+  Card,
+  ChoiceField,
+  ErrorText,
+  Eyebrow,
+  Field,
+  Screen,
+  StatusLine,
+  Title,
+} from '../ui';
 import { CorridorRung, findRung, runsOnJoin } from '../models/corridor';
 import { CandidateState, claimsForRung, rungKeyOf } from '../models/onboarding';
 import { CandidateAction } from '../state/candidateReducer';
 import { CandidateServices } from '../services/candidateServices';
 import { oauthPollPolicy, poll, pollHandle, verifierPollPolicy } from '../services/polling';
-import { colors, radii, spacing, type } from '../theme/tokens';
+import { colors, spacing, type } from '../theme/tokens';
 import {
   RungDraft,
   canSkip,
   canSubmit,
   errorFor,
+  OTHER_JURISDICTION,
   fieldsFor,
+  jurisdictionForSubmission,
+  filesFor,
   oauthResult,
   primaryActionLabel,
   rungStateFromClaim,
@@ -86,9 +102,9 @@ export function RungScreen({ state, dispatch, services }: Props) {
 
   if (!rung || !key) {
     return (
-      <View style={styles.screen}>
-        <Text style={type.body}>This step is not part of your corridor.</Text>
-      </View>
+      <Screen centred scroll={false}>
+        <Body>This step is not part of your corridor.</Body>
+      </Screen>
     );
   }
 
@@ -134,6 +150,26 @@ export function RungScreen({ state, dispatch, services }: Props) {
     }
   }
 
+  async function addScreenshots() {
+    try {
+      const picked = await services.document.pickMany();
+      if (picked.length === 0) return;
+      setDraft((current) => ({
+        ...current,
+        attachments: [...(current.attachments ?? []), ...picked],
+      }));
+    } catch {
+      setFailure('Those images could not be read. Try again.');
+    }
+  }
+
+  function removeScreenshot(index: number) {
+    setDraft((current) => ({
+      ...current,
+      attachments: (current.attachments ?? []).filter((_, at) => at !== index),
+    }));
+  }
+
   async function handlePrimary() {
     // The corridor is what a claim is written against, so a submission cannot
     // be made before it has loaded. In practice `rung` came from it, so this
@@ -151,10 +187,22 @@ export function RungScreen({ state, dispatch, services }: Props) {
     if (rung.input === 'document_upload' && !draft.documentName) {
       try {
         const file = await services.document.pick();
-        setDraft((current) => ({ ...current, documentName: file.name, documentUri: file.uri }));
+        setDraft((current) => ({
+          ...current,
+          documentName: file.name,
+          documentUri: file.uri,
+          documentFile: file.file,
+        }));
       } catch {
         setFailure('That file could not be read. Choose a PDF or Word file.');
       }
+      return;
+    }
+
+    // Screenshots accumulate. The first press opens the picker; once there is
+    // at least one, the button submits and "Add more" opens it again.
+    if (rung.input === 'screenshots' && (draft.attachments?.length ?? 0) === 0) {
+      await addScreenshots();
       return;
     }
 
@@ -162,24 +210,31 @@ export function RungScreen({ state, dispatch, services }: Props) {
 
     setBusy(true);
     try {
-      dispatch({ type: 'SUBMIT_RUNG', key, value: draft.value, jurisdiction: draft.jurisdiction });
+      dispatch({
+        type: 'SUBMIT_RUNG',
+        key,
+        value: draft.value,
+        jurisdiction: jurisdictionForSubmission(draft),
+      });
 
       // The order is `submissionSteps`' decision, not this component's, so the
       // rule that a file goes up before the claim is written is held by a test
       // rather than by the order two awaits happen to sit in.
       for (const step of submissionSteps(rung, draft)) {
-        if (step === 'upload' && draft.documentName) {
-          await services.document.upload(state.authSession, key, {
-            name: draft.documentName,
-            uri: draft.documentUri,
-          });
+        if (step === 'upload') {
+          // filesFor decides what this rung carries, so the screen does not
+          // have to know a document sits on one pair of fields and a set of
+          // screenshots on another.
+          for (const file of filesFor(rung, draft)) {
+            await services.document.upload(state.authSession, corridorKey, key, file);
+          }
           continue;
         }
         const claim = await services.verifier.submit(state.authSession, {
           corridorKey,
           rungKey: key,
           value: draft.value,
-          jurisdiction: draft.jurisdiction,
+          jurisdiction: jurisdictionForSubmission(draft),
           documentUri: draft.documentUri,
         });
         dispatch({ type: 'RECORD_CLAIM', claim });
@@ -199,81 +254,119 @@ export function RungScreen({ state, dispatch, services }: Props) {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.screen}>
-      <Text style={type.title}>{rung.displayName}</Text>
-      {rung.requirement === 'optional' ? (
-        <Text style={type.caption}>Optional. Adding it gives practices more to go on.</Text>
-      ) : null}
+    <Screen>
+      <View>
+        <Title>{rung.displayName}</Title>
+        {rung.requirement === 'optional' ? (
+          <Caption>Optional. Adding it gives practices more to go on.</Caption>
+        ) : null}
+      </View>
 
-      {fields.map((field) => (
-        <View key={field.key} style={styles.field}>
-          <Text style={type.label}>{field.label}</Text>
-          <TextInput
-            style={styles.input}
+      {fields.map((field) =>
+        field.choices ? (
+          <React.Fragment key={field.key}>
+            <ChoiceField
+              label={field.label}
+              value={draft.jurisdiction}
+              options={[
+                ...field.choices.map((choice) => ({ value: choice.code, label: choice.label })),
+                // Always last, and always present. Somebody whose regulator
+                // nobody has integrated still has to be able to hand their
+                // licence in — it is recorded as self_attested, which is the
+                // truth, rather than being refused at the door.
+                { value: OTHER_JURISDICTION, label: 'Somewhere else' },
+              ]}
+              onChange={(value) =>
+                setDraft((current) => ({ ...current, jurisdiction: value }))
+              }
+            />
+            {draft.jurisdiction === OTHER_JURISDICTION ? (
+              <Field
+                label="Where was it issued?"
+                value={draft.jurisdictionOther ?? ''}
+                placeholder="Country or state"
+                onChangeText={(text) =>
+                  setDraft((current) => ({ ...current, jurisdictionOther: text }))
+                }
+                accessibilityLabel="Where was it issued?"
+                hint="We have no register for this one, so it will be recorded as something you told us."
+              />
+            ) : null}
+          </React.Fragment>
+        ) : (
+          <Field
+            key={field.key}
+            label={field.label}
             value={draft[field.key] ?? ''}
             placeholder={field.placeholder}
-            placeholderTextColor={colors.muted}
             autoCapitalize="characters"
             onChangeText={(text) => setDraft((current) => ({ ...current, [field.key]: text }))}
             accessibilityLabel={field.label}
+            error={field.key === 'value' ? validationError : undefined}
           />
-        </View>
-      ))}
+        ),
+      )}
 
       {rung.input === 'document_upload' && draft.documentName ? (
-        <Text style={type.body}>{draft.documentName}</Text>
+        <Card>
+          <Eyebrow>Chosen</Eyebrow>
+          <Text style={type.bodyStrong}>{draft.documentName}</Text>
+        </Card>
       ) : null}
 
-      {status ? <Text style={styles.status}>{status}</Text> : null}
-      {validationError ? <Text style={styles.error}>{validationError}</Text> : null}
-      {failure ? <Text style={styles.error}>{failure}</Text> : null}
+      {rung.input === 'screenshots' ? (
+        <Card>
+          <Eyebrow>
+            {(draft.attachments?.length ?? 0) === 0
+              ? 'Nothing added yet'
+              : `${draft.attachments?.length} added`}
+          </Eyebrow>
+          {(draft.attachments ?? []).map((file, index) => (
+            <View key={`${file.name}-${index}`} style={styles.attachment}>
+              <Text style={type.bodyStrong} numberOfLines={1}>
+                {file.name}
+              </Text>
+              <Pressable onPress={() => removeScreenshot(index)} accessibilityRole="button">
+                <Text style={styles.remove}>Remove</Text>
+              </Pressable>
+            </View>
+          ))}
+          {(draft.attachments?.length ?? 0) > 0 ? (
+            <Button label="Add more" variant="quiet" onPress={addScreenshots} />
+          ) : (
+            <Caption>
+              A profile rarely fits in one image. Add as many as it takes to show the whole thing.
+            </Caption>
+          )}
+        </Card>
+      ) : null}
 
-      <Pressable
-        style={[styles.primary, busy && styles.primaryBusy]}
-        onPress={handlePrimary}
-        disabled={busy}
-        accessibilityRole="button"
-      >
-        {busy ? <ActivityIndicator color={colors.ink} /> : <Text style={styles.primaryLabel}>{primaryActionLabel(rung, progress)}</Text>}
-      </Pressable>
+      {status ? <StatusLine tone="checked">{status}</StatusLine> : null}
+      {fields.length === 0 && validationError ? <ErrorText>{validationError}</ErrorText> : null}
+      {failure ? <ErrorText>{failure}</ErrorText> : null}
+
+      <Button label={primaryActionLabel(rung, progress, draft)} onPress={handlePrimary} busy={busy} />
 
       {canSkip(rung) ? (
-        <Pressable
+        <Button
+          label="Skip for now"
+          variant="quiet"
           onPress={() => {
             dispatch({ type: 'SKIP_RUNG', key });
             dispatch({ type: 'NEXT' });
           }}
-          accessibilityRole="button"
-        >
-          <Text style={styles.skip}>Skip for now</Text>
-        </Pressable>
+        />
       ) : null}
-    </ScrollView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { padding: spacing.lg, gap: spacing.md, backgroundColor: colors.ink, flexGrow: 1 },
-  field: { gap: spacing.xs },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radii.input,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    color: colors.paper,
-    fontFamily: 'Inter_400Regular',
-    backgroundColor: colors.panel,
-  },
-  status: { ...type.caption, color: colors.trustBlue },
-  error: { ...type.caption, color: colors.error },
-  primary: {
-    backgroundColor: colors.coral,
-    borderRadius: radii.pill,
-    paddingVertical: spacing.md,
+  attachment: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
   },
-  primaryBusy: { opacity: 0.7 },
-  primaryLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 15, color: colors.ink },
-  skip: { ...type.caption, textAlign: 'center', textDecorationLine: 'underline' },
+  remove: { fontFamily: 'Inter_600SemiBold', fontSize: 12.5, color: colors.error },
 });

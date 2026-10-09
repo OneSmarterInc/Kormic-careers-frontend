@@ -1,6 +1,7 @@
 import { CorridorConfig, VerificationClaim } from '../models/corridor';
 import {
   AuthSession,
+  PersonSnapshot,
   CandidateState,
   ClaimSession,
   EntryMode,
@@ -24,7 +25,13 @@ export type CandidateAction =
   | { type: 'SET_CLAIM'; claim: ClaimSession }
   | { type: 'CLAIM_VERIFIED'; pinnedEmail: string; prefill: Partial<Person>; claimToken?: string }
   | { type: 'SET_AUTH_SESSION'; session: AuthSession }
+  | { type: 'HYDRATE'; snapshot: PersonSnapshot }
   | { type: 'UPDATE_PERSON'; field: keyof Person; value: string }
+  // Separate from UPDATE_PERSON because this one field is a list, and
+  // widening that action's `value` to string | string[] would put the
+  // burden of checking on every one of its call sites.
+  | { type: 'UPDATE_PREVIOUS_NAMES'; names: string[] }
+  | { type: 'SET_SCREENING_CONSENT'; agreed: boolean }
   | { type: 'SUBMIT_RUNG'; key: string; value?: string; jurisdiction?: string }
   | { type: 'SET_RUNG_STATE'; key: string; state: RungProgress['state']; error?: string }
   | { type: 'SKIP_RUNG'; key: string }
@@ -87,12 +94,28 @@ export function candidateReducer(
       };
     case 'SET_AUTH_SESSION':
       return { ...state, authSession: action.session };
+    case 'HYDRATE': {
+      /**
+       * What the server knows, dropped into a fresh state.
+       *
+       * No per-rung progress is derived from the claims. Progress is what the
+       * person did in this sitting; the claims are what is true about them,
+       * and the profile reads the claim rather than the progress precisely so
+       * the two do not have to be kept in step.
+       */
+      const { person, claims, agentName } = action.snapshot;
+      return { ...state, person: { ...state.person, ...person }, claims, agentName };
+    }
     case 'UPDATE_PERSON': {
       // The claim path pins the address to the roster value; the screen hides
       // the field, and the reducer refuses the write regardless.
       if (action.field === 'email' && !isEmailEditable(state)) return state;
       return { ...state, person: { ...state.person, [action.field]: action.value } };
     }
+    case 'UPDATE_PREVIOUS_NAMES':
+      return { ...state, person: { ...state.person, previousNames: action.names } };
+    case 'SET_SCREENING_CONSENT':
+      return { ...state, person: { ...state.person, screeningConsent: action.agreed } };
     case 'SUBMIT_RUNG':
       return withRung(state, action.key, {
         state: 'submitted',
@@ -109,7 +132,21 @@ export function candidateReducer(
     case 'SET_BUILD_STAGE':
       return { ...state, buildStage: action.stage };
     case 'LOGOUT':
-      return initialCandidateState;
+      /**
+       * Everything about the person goes; the corridor stays.
+       *
+       * It is public configuration fetched once at start, not their data, and
+       * the fetch does not re-run — so dropping it here left the tour empty
+       * and the ladder with no rungs, with nothing to put them back.
+       *
+       * Landing on Entry rather than Welcome, because somebody who just signed
+       * out has read the pitch. The door is what they want.
+       */
+      return {
+        ...initialCandidateState,
+        corridor: state.corridor,
+        route: 'Entry',
+      };
     default:
       return state;
   }

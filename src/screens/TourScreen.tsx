@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CandidateState } from '../models/onboarding';
 import { CandidateAction } from '../state/candidateReducer';
 import { colors, radii, spacing, type } from '../theme/tokens';
+import { Screen } from '../ui';
 import { buildTour, stepCountLine, tourPosition } from './tourModel';
 
 interface Props {
@@ -23,21 +24,21 @@ export function TourScreen({ state, dispatch }: Props) {
 
   if (!stop) {
     return (
-      <View style={styles.screen}>
+      <Screen centred scroll={false}>
         <Text style={type.body}>We could not load what this corridor asks for.</Text>
-      </View>
+      </Screen>
     );
   }
 
   return (
-    <View style={styles.screen}>
+    <Screen scroll={false}>
       <View style={styles.dots} accessibilityLabel={`Part ${position.current} of ${position.total}`}>
         {stops.map((entry, entryIndex) => (
           <View key={entry.key} style={[styles.dot, entryIndex <= index && styles.dotOn]} />
         ))}
       </View>
 
-      <ScrollView contentContainerStyle={styles.body}>
+      <ScrollView contentContainerStyle={styles.body} style={styles.bodyScroll}>
         <Text style={type.caption}>{stepCountLine(state.corridor)}</Text>
         <Text style={type.title}>{stop.heading}</Text>
         <Text style={type.body}>{stop.body}</Text>
@@ -65,14 +66,14 @@ export function TourScreen({ state, dispatch }: Props) {
           <Text style={styles.skip}>{last ? ' ' : 'Skip the tour'}</Text>
         </Pressable>
       </View>
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.ink, padding: spacing.lg, gap: spacing.md },
+  bodyScroll: { flex: 1 },
   dots: { flexDirection: 'row', gap: spacing.xs },
-  dot: { height: 3, flex: 1, backgroundColor: colors.line, borderRadius: radii.pill },
+  dot: { height: 4, flex: 1, backgroundColor: colors.line, borderRadius: radii.pill },
   dotOn: { backgroundColor: colors.coral },
   body: { gap: spacing.sm, paddingTop: spacing.lg },
   card: {

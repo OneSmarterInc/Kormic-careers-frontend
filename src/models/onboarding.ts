@@ -53,6 +53,31 @@ export interface Person {
   city: string;
   region: string;
   country: string;
+
+  /**
+   * Identity resolution, for exclusion screening only.
+   *
+   * Both optional, and the product works without them — a screen run on a
+   * name alone reports itself as weak rather than pretending to be
+   * conclusive. They exist to tell this person apart from a stranger with
+   * the same name on a federal exclusion list, which is as much about
+   * clearing them as flagging them: a shared name with a different date of
+   * birth is a different person.
+   *
+   * ISO `YYYY-MM-DD`, or undefined when not given.
+   */
+  dateOfBirth?: string;
+  /** Maiden and prior names. An exclusion is recorded under the name held
+   *  at the time, so the current one alone is not enough to search on. */
+  previousNames?: string[];
+
+  /**
+   * Whether the person has agreed to be checked against the federal exclusion
+   * lists. What they ticked in this sitting; the server records when.
+   */
+  screeningConsent?: boolean;
+  /** When the server recorded their agreement. Null or absent if it has not. */
+  screeningConsentAt?: string | null;
 }
 
 /**
@@ -86,6 +111,17 @@ export interface AuthSession {
   personId?: string;
 }
 
+/**
+ * Everything the server knows about a person, in one shape. Read at start so a
+ * returning person sees their profile rather than an empty ladder.
+ */
+export interface PersonSnapshot {
+  person: Person;
+  claims: VerificationClaim[];
+  /** What they call their Navigator, if they have named it. */
+  agentName?: string;
+}
+
 export interface CandidateState {
   route: Route;
   corridor?: CorridorConfig;
@@ -97,6 +133,8 @@ export interface CandidateState {
   person: Person;
   rungs: Record<RungKey, RungProgress>;
   claims: VerificationClaim[];
+  /** What the person calls their Navigator, once they have named it. */
+  agentName?: string;
   buildStage: number;
 }
 
@@ -117,13 +155,63 @@ export const initialCandidateState: CandidateState = {
   buildStage: 0,
 };
 
-export function isPersonComplete(person: Person): boolean {
+/** The youngest a person can be and still be signing up for work. */
+export const MIN_AGE_YEARS = 16;
+
+/**
+ * Why a date of birth cannot be used, or undefined if it can.
+ *
+ * Required at signup, because background checks are searched on it: without
+ * one, every stranger who shares a name with somebody excluded lands in a
+ * manual queue. A date that is not a real day, is in the future, or makes the
+ * person implausibly young or old is almost always a slip of the picker.
+ */
+export function dateOfBirthProblem(value: string | undefined, now: Date = new Date()): string | undefined {
+  const text = (value ?? '').trim();
+  if (!text) return 'Add your date of birth.';
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (!match) return 'Pick a date from the calendar.';
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    return 'That is not a real date.';
+  }
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  if (date.getTime() > today) return 'A date of birth cannot be in the future.';
+  const youngest = Date.UTC(now.getFullYear() - MIN_AGE_YEARS, now.getMonth(), now.getDate());
+  if (date.getTime() > youngest) return `You need to be at least ${MIN_AGE_YEARS}.`;
+  if (year < now.getFullYear() - 120) return 'Check the year.';
+  return undefined;
+}
+
+/** Agreed in this sitting, or recorded by the server on an earlier one. */
+export function hasScreeningConsent(person: Person): boolean {
+  return person.screeningConsent === true || Boolean(person.screeningConsentAt);
+}
+
+/** What still stands between this person and Continue, in words they will recognise. */
+export function missingDetails(person: Person, now: Date = new Date()): string[] {
+  const missing: string[] = [];
+  if (!person.fullName.trim()) missing.push('your name');
+  if (!person.email.trim() || !/.+@.+\..+/.test(person.email)) missing.push('a valid email');
+  if (!person.phone.trim()) missing.push('your phone');
+  if (!person.country.trim()) missing.push('your country');
+  if (dateOfBirthProblem(person.dateOfBirth, now)) missing.push('your date of birth');
+  if (!hasScreeningConsent(person)) missing.push('your agreement to background checks');
+  return missing;
+}
+
+export function isPersonComplete(person: Person, now: Date = new Date()): boolean {
   return Boolean(
     person.fullName.trim() &&
       person.email.trim() &&
       /.+@.+\..+/.test(person.email) &&
       person.phone.trim() &&
-      person.country.trim(),
+      person.country.trim() &&
+      // Both required: the checks are searched on the date, and are not run
+      // at all without agreement.
+      !dateOfBirthProblem(person.dateOfBirth, now) &&
+      hasScreeningConsent(person),
   );
 }
 

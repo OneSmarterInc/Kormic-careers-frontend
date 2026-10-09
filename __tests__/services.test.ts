@@ -4,11 +4,12 @@ import { FALLBACK_CORRIDOR_KEY, readConfig } from '../src/services/config';
 import { decodeSession, memoryTokenStore } from '../src/services/tokenStorage';
 import { oauthPollPolicy, poll, pollHandle } from '../src/services/polling';
 import { shouldNotify } from '../src/services/pushModel';
-import { toAuthorizeUrl, toClaimVerify, toOAuthStatus } from '../src/services/contract';
+import { toAuthorizeUrl, toClaimVerify, toMe, toOAuthStatus, toPerson, toPersonUpdate } from '../src/services/contract';
 import { implementedScreens, screenFor } from '../src/navigation/screens';
-import { orderedRoutes } from '../src/navigation/routes';
+import { getPreviousRoute, openingRoute, orderedRoutes, routeAfterSignIn } from '../src/navigation/routes';
+import { memoryDeviceMemory } from '../src/services/deviceMemory';
 import { candidateReducer } from '../src/state/candidateReducer';
-import { initialCandidateState } from '../src/models/onboarding';
+import { CandidateState, initialCandidateState } from '../src/models/onboarding';
 import { sampleCorridor } from '../src/services/candidateServices';
 import {
   DEFAULT_NAVIGATOR_NAME,
@@ -20,6 +21,7 @@ import {
 } from '../src/screens/agentModel';
 import { buildProfileRows } from '../src/screens/profileModel';
 import { rungStateFromClaim } from '../src/screens/rungModel';
+import { joinOrSignInNote } from '../src/screens/claimModel';
 
 // --- helpers --------------------------------------------------------------
 
@@ -293,6 +295,291 @@ describe('a rung submission names its corridor', () => {
 
     expect(sent.value).toBe(null);
     expect(sent.jurisdiction).toBe(null);
+  });
+});
+
+// --- coming back ----------------------------------------------------------
+
+describe('a returning person can read their record back', () => {
+  const wireMe = {
+    person: {
+      person_id: 'p_1',
+      full_name: 'Sample Person',
+      email: 'person@example.com',
+      phone: '555',
+      city: '',
+      region: '',
+      country: 'United States',
+      agent_name: 'Ada',
+    },
+    claims: [
+      {
+        rung_key: 'licence', fact_type: 'licence', fact_value: 'A1234',
+        method: 'primary_source' as const, source_ref: null, verifier: null,
+        verifier_version: null, checked_at: '2026-08-10T10:00:00Z',
+        expires_at: null, status: 'active' as const,
+      },
+    ],
+  };
+
+  it('reads the person and their claims in one call', () => {
+    const snapshot = toMe(wireMe);
+    expect(snapshot.person.fullName).toBe('Sample Person');
+    expect(snapshot.person.personId).toBe('p_1');
+    expect(snapshot.claims).toHaveLength(1);
+    expect(snapshot.claims[0]?.method).toBe('primary_source');
+    expect(snapshot.agentName).toBe('Ada');
+  });
+
+  it('refuses a person with no identity rather than rendering a blank one', () => {
+    expect(() => toPerson({ ...wireMe.person, person_id: null as unknown as string })).toThrow(
+      /person_id/,
+    );
+    expect(() => toPerson({ ...wireMe.person, email: null as unknown as string })).toThrow(/email/);
+  });
+
+  it('reads the identity fields when the server sends them', () => {
+    const person = toPerson({
+      ...wireMe.person,
+      date_of_birth: '1984-02-11',
+      previous_names: ['Shelley Smith'],
+    });
+    expect(person.dateOfBirth).toBe('1984-02-11');
+    expect(person.previousNames).toEqual(['Shelley Smith']);
+  });
+
+  it('treats a server that does not send them as a person who did not give them', () => {
+    // Optional at the boundary, unlike person_id and email. Absent is a real
+    // answer here — from an older server, and from the person.
+    const person = toPerson(wireMe.person);
+    expect(person.dateOfBirth).toBeUndefined();
+    expect(person.previousNames).toBeUndefined();
+  });
+
+  it('sends the date of birth and previous names when saving', () => {
+    // They were collected on screen and dropped from the save, so background
+    // checks waited for details the person had already given.
+    const body = toPersonUpdate({
+      ...toPerson(wireMe.person),
+      dateOfBirth: '1984-02-11',
+      previousNames: ['Shelley Smith'],
+    });
+    expect(body.date_of_birth).toBe('1984-02-11');
+    expect(body.previous_names).toEqual(['Shelley Smith']);
+  });
+
+  it('leaves out a half-typed date rather than failing the whole save', () => {
+    for (const typed of ['1984-2-11', '11/02/1984', '1984', '']) {
+      const body = toPersonUpdate({ ...toPerson(wireMe.person), dateOfBirth: typed });
+      expect(body).not.toHaveProperty('date_of_birth');
+      expect(body.full_name).toBe(wireMe.person.full_name);
+    }
+  });
+
+  it('sends agreement as a yes or no and never a time', () => {
+    // The server stamps when. A client-supplied time could backdate consent.
+    const body = toPersonUpdate({ ...toPerson(wireMe.person), screeningConsent: true });
+    expect(body.screening_consent).toBe(true);
+    expect(body).not.toHaveProperty('screening_consent_at');
+  });
+
+  it('reads when the server recorded agreement', () => {
+    const person = toPerson({ ...wireMe.person, screening_consent_at: '2026-10-01T15:00:00Z' });
+    expect(person.screeningConsentAt).toBe('2026-10-01T15:00:00Z');
+  });
+
+  it('never sends the email the session was minted against', () => {
+    expect(toPersonUpdate(toPerson(wireMe.person))).not.toHaveProperty('email');
+  });
+
+  it('treats an unnamed Navigator as absent, not as the string null', () => {
+    expect(toMe({ ...wireMe, person: { ...wireMe.person, agent_name: null } }).agentName).toBe(
+      undefined,
+    );
+  });
+
+  it('never sends the address back when saving details', async () => {
+    let sent: Record<string, unknown> = {};
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      sent = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+      return reply(200, wireMe);
+    }) as unknown as typeof fetch;
+
+    const services = createLiveCandidateServices({
+      config: { apiHost: 'https://api.test', corridorKey: 'sample', useMocks: false, oauthRedirect: 'k://oauth' },
+      tokens: signedIn(),
+      fetchImpl,
+    });
+
+    await services.person.save(undefined, {
+      fullName: 'Sample Person', email: 'someone.else@example.com',
+      phone: '555', city: '', region: '', country: 'United States',
+    });
+
+    // The address is what the session was minted against. The server refuses
+    // it; the client does not offer it either.
+    expect(sent.email).toBe(undefined);
+    expect(sent.person_id).toBe(undefined);
+    expect(sent.full_name).toBe('Sample Person');
+  });
+});
+
+// --- signing out ----------------------------------------------------------
+
+describe('signing out forgets the session on this device', () => {
+  it('clears the stored token, so a reload does not sign the person back in', async () => {
+    const tokens = signedIn();
+    const fetchImpl = (async () => reply(204, undefined)) as unknown as typeof fetch;
+    const services = createLiveCandidateServices({
+      config: { apiHost: 'https://api.test', corridorKey: 'sample', useMocks: false, oauthRedirect: 'k://oauth' },
+      tokens,
+      fetchImpl,
+    });
+
+    expect(await tokens.read()).not.toBe(undefined);
+    await services.session.signOut({ access: 'old-access' });
+
+    // The whole point. Resetting reducer state alone left the token in place,
+    // and the boot-time restore would have picked it straight back up.
+    expect(await tokens.read()).toBe(undefined);
+  });
+
+  it('still signs out when the device cannot be unregistered', async () => {
+    const tokens = signedIn();
+    const fetchImpl = (async () => {
+      throw new TypeError('Network request failed');
+    }) as unknown as typeof fetch;
+    const services = createLiveCandidateServices({
+      config: { apiHost: 'https://api.test', corridorKey: 'sample', useMocks: false, oauthRedirect: 'k://oauth' },
+      tokens,
+      fetchImpl,
+    });
+
+    await services.session.signOut({ access: 'old-access' });
+    expect(await tokens.read()).toBe(undefined);
+  });
+
+  it('leaves nothing of the previous person behind in state', () => {
+    let state = candidateReducer(initialCandidateState, { type: 'SET_CORRIDOR', corridor: sampleCorridor });
+    state = candidateReducer(state, {
+      type: 'HYDRATE',
+      snapshot: {
+        person: { fullName: 'First Person', email: 'first@example.com', phone: '', city: '', region: '', country: '' },
+        claims: [{ rungKey: 'licence', factType: 'licence', factValue: 'A1234', method: 'primary_source', status: 'active', checkedAt: '2026-08-01T10:00:00Z' }],
+        agentName: 'Ada',
+      },
+    });
+    state = candidateReducer(state, { type: 'SET_AUTH_SESSION', session: { access: 'a' } });
+
+    const after = candidateReducer(state, { type: 'LOGOUT' });
+
+    // Signing out to look at another profile must not leave the first one's
+    // facts on screen.
+    expect(after.person.email).toBe('');
+    expect(after.claims).toEqual([]);
+    expect(after.agentName).toBe(undefined);
+    expect(after.authSession).toBe(undefined);
+  });
+
+  it('keeps the corridor, which is configuration rather than the person', () => {
+    // It is fetched once at start and the fetch does not re-run, so dropping
+    // it on sign-out left the tour empty and the ladder with no rungs.
+    let state = candidateReducer(initialCandidateState, { type: 'SET_CORRIDOR', corridor: sampleCorridor });
+    state = candidateReducer(state, { type: 'SET_AUTH_SESSION', session: { access: 'a' } });
+    const after = candidateReducer(state, { type: 'LOGOUT' });
+    expect(after.corridor).toBe(sampleCorridor);
+    expect(orderedRoutes(after).length).toBeGreaterThan(4);
+  });
+
+  it('lands on the door, not the pitch', () => {
+    const state = candidateReducer(initialCandidateState, { type: 'SET_CORRIDOR', corridor: sampleCorridor });
+    // Somebody who just signed out has read the welcome screen already.
+    expect(candidateReducer(state, { type: 'LOGOUT' }).route).toBe('Entry');
+  });
+
+  it('tells a returning person the same address brings their profile back', () => {
+    // Without this the only thing on the door reads "Join", and somebody who
+    // signed out cannot tell it is also the way back in.
+    expect(/coming back|already have/i.test(joinOrSignInNote)).toBe(true);
+    expect(/sign in|profile/i.test(joinOrSignInNote)).toBe(true);
+  });
+});
+
+// --- where the app opens --------------------------------------------------
+
+describe('the introduction is given once, not every time', () => {
+  it('takes a signed-in person straight to their profile', () => {
+    expect(openingRoute({ signedIn: true, seenIntro: true })).toBe('Profile');
+    expect(openingRoute({ signedIn: true, seenIntro: false })).toBe('Profile');
+  });
+
+  it('takes somebody who has been here before to the door, not the pitch', () => {
+    // Signing out does not make a person a stranger. Showing them the welcome
+    // screen and the tour again is the app forgetting who it is talking to.
+    expect(openingRoute({ signedIn: false, seenIntro: true })).toBe('Entry');
+  });
+
+  it('still introduces itself to a first-time visitor', () => {
+    expect(openingRoute({ signedIn: false, seenIntro: false })).toBe('Welcome');
+  });
+
+  it('remembers across a sign-out, because it is a fact about the device', () => {
+    const device = memoryDeviceMemory();
+    return device.hasSeenIntro().then(async (before) => {
+      expect(before).toBe(false);
+      await device.rememberIntroSeen();
+      expect(await device.hasSeenIntro()).toBe(true);
+    });
+  });
+});
+
+describe('the door knows whether it just signed somebody in', () => {
+  const complete = {
+    fullName: 'Sample Person', email: 'p@example.com', phone: '555',
+    city: '', region: '', country: 'United States',
+    dateOfBirth: '1984-02-11', screeningConsentAt: '2026-10-01T15:00:00Z',
+  };
+
+  it('sends a returning person without a date of birth or agreement back to their details', () => {
+    // Required since October 2026. Somebody who signed up before then has no
+    // other way to add them, and their background checks would never run.
+    expect(routeAfterSignIn({ person: { ...complete, dateOfBirth: undefined }, claims: [] })).toBe('BasicInfo');
+    expect(routeAfterSignIn({ person: { ...complete, screeningConsentAt: null }, claims: [] })).toBe('BasicInfo');
+  });
+
+  it('sends a person who already has a profile to it', () => {
+    // The bug: verify dispatched NEXT, which is BasicInfo, so somebody
+    // signing back in was asked for their name again.
+    expect(routeAfterSignIn({ person: complete, claims: [] })).toBe('Profile');
+  });
+
+  it('still asks a brand new person for their details', () => {
+    expect(routeAfterSignIn({ person: { ...complete, fullName: '', phone: '', country: '' }, claims: [] })).toBe('BasicInfo');
+    expect(routeAfterSignIn(undefined)).toBe('BasicInfo');
+  });
+
+  it('treats details on file as returning, even with no claims yet', () => {
+    // Somebody who filled the form and stopped before a single rung has still
+    // been here. The profile is where it tells them what is outstanding.
+    expect(routeAfterSignIn({ person: complete, claims: [] })).toBe('Profile');
+  });
+});
+
+describe('the profile is home', () => {
+  function home(): CandidateState {
+    return { ...candidateReducer(initialCandidateState, { type: 'SET_CORRIDOR', corridor: sampleCorridor }), route: 'Profile' };
+  }
+
+  it('has no back button, because there is nowhere behind it', () => {
+    // Back used to lead to the handover screen, which is a one-time moment in
+    // signing up. A person opening the app this morning does not want it.
+    expect(getPreviousRoute(home())).toBe(undefined);
+  });
+
+  it('keeps the conversation reachable from it', () => {
+    // Chat was only ever reachable from the handover screen, so a returning
+    // person could not get to it at all.
+    expect(getPreviousRoute({ ...home(), route: 'Chat' })).toBe('Profile');
   });
 });
 

@@ -1,11 +1,22 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { CandidateState, Person, isEmailEditable, isPersonComplete } from '../models/onboarding';
+import { StyleSheet, Text, View } from 'react-native';
+import { Body, Button, Caption, Card, CheckField, DateField, ErrorText, Eyebrow, Field, Screen, Title } from '../ui';
+import {
+  CandidateState,
+  MIN_AGE_YEARS,
+  Person,
+  dateOfBirthProblem,
+  hasScreeningConsent,
+  isEmailEditable,
+  isPersonComplete,
+  missingDetails,
+} from '../models/onboarding';
 import { CandidateServices } from '../services/candidateServices';
 import { CandidateAction } from '../state/candidateReducer';
-import { colors, radii, spacing, type } from '../theme/tokens';
-import { CODE_LENGTH, attemptsLine, claimError, isCodeWellFormed } from './claimModel';
+import { spacing, type } from '../theme/tokens';
+import { CODE_LENGTH, attemptsLine, claimError, isCodeWellFormed, joinOrSignInNote } from './claimModel';
 import { stepCountLine } from './tourModel';
+import { routeAfterSignIn } from '../navigation/routes';
 
 interface Props {
   state: CandidateState;
@@ -17,17 +28,17 @@ interface Props {
 
 export function WelcomeScreen({ state, dispatch }: Omit<Props, 'services'>) {
   return (
-    <View style={styles.centre}>
-      <Text style={type.title}>Your work, checked once.</Text>
-      <Text style={type.body}>
+    <Screen centred scroll={false}>
+      <Text style={type.eyebrow}>Kormic Careers</Text>
+      <Text style={type.display}>Your work, checked once.</Text>
+      <Body>
         Practices ask for the same records over and over. Give them once, and carry what was checked
         with you.
-      </Text>
-      <Pressable style={styles.primary} onPress={() => dispatch({ type: 'NEXT' })} accessibilityRole="button">
-        <Text style={styles.primaryLabel}>See what it involves</Text>
-      </Pressable>
-      <Text style={type.caption}>{stepCountLine(state.corridor)}, free for you, always.</Text>
-    </View>
+      </Body>
+      <View style={styles.spacer} />
+      <Button label="See what it involves" onPress={() => dispatch({ type: 'NEXT' })} />
+      <Caption>{stepCountLine(state.corridor)}, free for you, always.</Caption>
+    </Screen>
   );
 }
 
@@ -86,66 +97,49 @@ export function EntryScreen({ state, dispatch, services }: Props) {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.screen}>
-      <Text style={type.title}>How are you joining?</Text>
+    <Screen>
+      <Title>How are you joining?</Title>
 
-      <View style={styles.card}>
-        <Text style={type.label}>Join</Text>
-        <Text style={type.caption}>
-          Give us an address and we will send you a code. Free, always.
-        </Text>
-        <TextInput
-          style={styles.input}
+      <Card>
+        <Eyebrow>Join or sign in</Eyebrow>
+        <Caption>{joinOrSignInNote}</Caption>
+        <Field
           value={email}
           onChangeText={setEmail}
           placeholder="you@example.com"
-          placeholderTextColor={colors.muted}
           autoCapitalize="none"
           keyboardType="email-address"
           accessibilityLabel="Email address"
         />
-        <Pressable
-          style={styles.primary}
+        <Button
+          label="Send me a code"
           onPress={startJoin}
+          busy={busy === 'join'}
           disabled={busy !== undefined}
-          accessibilityRole="button"
-        >
-          {busy === 'join' ? (
-            <ActivityIndicator color={colors.ink} />
-          ) : (
-            <Text style={styles.primaryLabel}>Send me a code</Text>
-          )}
-        </Pressable>
-      </View>
+        />
+      </Card>
 
-      <View style={styles.card}>
-        <Text style={type.label}>A practice invited me</Text>
-        <Text style={type.caption}>Paste the code from your invitation.</Text>
-        <TextInput
-          style={styles.input}
+      <Card>
+        <Eyebrow>A practice invited me</Eyebrow>
+        <Caption>Paste the code from your invitation.</Caption>
+        <Field
           value={token}
           onChangeText={setToken}
           placeholder="Invitation code"
-          placeholderTextColor={colors.muted}
           autoCapitalize="none"
           accessibilityLabel="Invitation code"
         />
-        <Pressable
-          style={styles.primary}
+        <Button
+          label="Continue"
           onPress={startClaim}
+          variant="secondary"
+          busy={busy === 'claim'}
           disabled={busy !== undefined}
-          accessibilityRole="button"
-        >
-          {busy === 'claim' ? (
-            <ActivityIndicator color={colors.ink} />
-          ) : (
-            <Text style={styles.primaryLabel}>Continue</Text>
-          )}
-        </Pressable>
-      </View>
+        />
+      </Card>
 
-      {failure ? <Text style={styles.error}>{failure}</Text> : null}
-    </ScrollView>
+      {failure ? <ErrorText>{failure}</ErrorText> : null}
+    </Screen>
   );
 }
 
@@ -180,37 +174,29 @@ export function ClaimCodeScreen({ state, dispatch, services }: Props) {
   }
 
   return (
-    <View style={styles.screen}>
-      <Text style={type.title}>Check your email</Text>
+    <Screen centred scroll={false}>
+      <Title>Check your email</Title>
       {/* The masked address is the only thing this screen may show before the
           code verifies. Nothing about the practice, the list, or the person. */}
-      <Text style={type.body}>
+      <Body>
         We sent a {CODE_LENGTH}-digit code to {state.claim?.maskedEmail ?? 'your listed address'}.
-      </Text>
+      </Body>
 
-      <TextInput
-        style={[styles.input, styles.code]}
+      <Field
         value={code}
         onChangeText={setCode}
         placeholder="000000"
-        placeholderTextColor={colors.muted}
         keyboardType="number-pad"
         maxLength={CODE_LENGTH}
         accessibilityLabel="Verification code"
+        style={styles.code}
+        error={failure}
       />
 
-      {failure ? <Text style={styles.error}>{failure}</Text> : null}
-      {attemptsLine(attempts) ? <Text style={type.caption}>{attemptsLine(attempts)}</Text> : null}
+      {attemptsLine(attempts) ? <Caption>{attemptsLine(attempts)}</Caption> : null}
 
-      <Pressable
-        style={[styles.primary, (!isCodeWellFormed(code) || busy) && styles.disabled]}
-        onPress={verify}
-        disabled={!isCodeWellFormed(code) || busy}
-        accessibilityRole="button"
-      >
-        {busy ? <ActivityIndicator color={colors.ink} /> : <Text style={styles.primaryLabel}>Verify</Text>}
-      </Pressable>
-    </View>
+      <Button label="Verify" onPress={verify} busy={busy} disabled={!isCodeWellFormed(code)} />
+    </Screen>
   );
 }
 
@@ -237,7 +223,12 @@ export function JoinCodeScreen({ state, dispatch, services }: Props) {
     try {
       const session = await services.signup.verify(address, code.trim());
       dispatch({ type: 'SET_AUTH_SESSION', session });
-      dispatch({ type: 'NEXT' });
+
+      // Ask who just came in. Advancing blindly sent a person with a finished
+      // profile to a form asking for their name again.
+      const snapshot = await services.person.load(session).catch(() => undefined);
+      if (snapshot) dispatch({ type: 'HYDRATE', snapshot });
+      dispatch({ type: 'NAVIGATE', route: routeAfterSignIn(snapshot) });
     } catch {
       setAttempts((current) => current + 1);
       setFailure(claimError('bad_code'));
@@ -260,45 +251,46 @@ export function JoinCodeScreen({ state, dispatch, services }: Props) {
   }
 
   return (
-    <View style={styles.screen}>
-      <Text style={type.title}>Check your email</Text>
-      <Text style={type.body}>
-        We sent a {CODE_LENGTH}-digit code to {state.signup?.email ?? 'your address'}.
-      </Text>
+    <Screen centred scroll={false}>
+      <Title>Check your email</Title>
+      <Body>We sent a {CODE_LENGTH}-digit code to {state.signup?.email ?? 'your address'}.</Body>
 
-      <TextInput
-        style={[styles.input, styles.code]}
+      <Field
         value={code}
         onChangeText={setCode}
         placeholder="000000"
-        placeholderTextColor={colors.muted}
         keyboardType="number-pad"
         maxLength={CODE_LENGTH}
         accessibilityLabel="Verification code"
+        style={styles.code}
+        error={failure}
       />
 
-      {failure ? <Text style={styles.error}>{failure}</Text> : null}
-      {attemptsLine(attempts) ? <Text style={type.caption}>{attemptsLine(attempts)}</Text> : null}
+      {attemptsLine(attempts) ? <Caption>{attemptsLine(attempts)}</Caption> : null}
 
-      <Pressable
-        style={[styles.primary, (!isCodeWellFormed(code) || busy) && styles.disabled]}
+      <Button
+        label="Verify"
         onPress={verify}
-        disabled={!isCodeWellFormed(code) || busy}
-        accessibilityRole="button"
-      >
-        {busy ? <ActivityIndicator color={colors.ink} /> : <Text style={styles.primaryLabel}>Verify</Text>}
-      </Pressable>
-
-      <Pressable onPress={resend} accessibilityRole="button">
-        <Text style={styles.link}>Send another code</Text>
-      </Pressable>
-    </View>
+        busy={busy}
+        disabled={!isCodeWellFormed(code)}
+      />
+      <Button label="Send another code" onPress={resend} variant="quiet" />
+    </Screen>
   );
 }
 
 // --- BasicInfo ------------------------------------------------------------
 
-const personFields: { key: keyof Person; label: string }[] = [
+/**
+ * Keys of Person whose value is plain text, so a list of text inputs cannot
+ * accidentally include one that is not — `previousNames` is a list and would
+ * render as `[object Object]` in a box nobody could use.
+ */
+type PersonTextField = {
+  [K in keyof Person]-?: Person[K] extends string | undefined ? K : never;
+}[keyof Person];
+
+const personFields: { key: PersonTextField; label: string }[] = [
   { key: 'fullName', label: 'Full name' },
   { key: 'email', label: 'Email' },
   { key: 'phone', label: 'Phone' },
@@ -307,10 +299,105 @@ const personFields: { key: keyof Person; label: string }[] = [
   { key: 'country', label: 'Country' },
 ];
 
+/**
+ * Date of birth, previous names, and agreement to background checks.
+ *
+ * Kept apart from the contact details and explained where they are asked,
+ * because they are asked for one reason: federal exclusion lists are searched
+ * by name, names collide, and the date of birth is what tells a stranger with
+ * the same name apart — which more often clears somebody than flags them.
+ *
+ * The date is required and picked from a calendar, never typed. The agreement
+ * is required too, and the box starts empty: nobody is searched for on a
+ * federal list because a checkbox was ticked for them.
+ */
+export const SCREENING_CONSENT_TEXT =
+  'I agree to Kormic checking my name, any previous names and my date of birth against the US ' +
+  'federal exclusion lists (HHS-OIG and SAM.gov), now and when those lists are updated.';
+
+function isoYearsAgo(years: number, now: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear() - years}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+function IdentitySection({
+  person,
+  dispatch,
+  showErrors,
+}: {
+  person: Person;
+  dispatch: (action: CandidateAction) => void;
+  showErrors: boolean;
+}) {
+  // Held locally as typed text so a half-entered list is not repeatedly split
+  // and rejoined under the person's cursor.
+  const [names, setNames] = useState((person.previousNames ?? []).join(', '));
+  const [touched, setTouched] = useState(false);
+  const dobProblem = dateOfBirthProblem(person.dateOfBirth);
+  const agreed = hasScreeningConsent(person);
+
+  return (
+    <View style={styles.identity}>
+      <Eyebrow>Background checks</Eyebrow>
+      <Caption>
+        Checks against public records are searched by name, and names are shared. Your date of
+        birth tells you apart from someone else with the same name — and more often shows that a
+        record we find is not yours.
+      </Caption>
+
+      <DateField
+        label="Date of birth"
+        value={person.dateOfBirth ?? ''}
+        max={isoYearsAgo(MIN_AGE_YEARS)}
+        min={isoYearsAgo(120)}
+        accessibilityLabel="Date of birth"
+        onChange={(value) => {
+          setTouched(true);
+          dispatch({ type: 'UPDATE_PERSON', field: 'dateOfBirth', value });
+        }}
+        error={(touched || showErrors) && dobProblem ? dobProblem : undefined}
+        hint="Used only to tell you apart from someone with the same name. Never shown to a practice."
+      />
+
+      <Field
+        label="Any previous names (optional)"
+        value={names}
+        placeholder="Maiden or former names, separated by commas"
+        accessibilityLabel="Previous names"
+        onChangeText={(text) => {
+          setNames(text);
+          dispatch({
+            type: 'UPDATE_PREVIOUS_NAMES',
+            names: text
+              .split(',')
+              .map((part) => part.trim())
+              .filter((part) => part.length > 0),
+          });
+        }}
+        hint="A record is filed under the name held at the time, so a former name is worth searching too."
+      />
+
+      <CheckField
+        checked={agreed}
+        onChange={(value) => dispatch({ type: 'SET_SCREENING_CONSENT', agreed: value })}
+        accessibilityLabel="Agree to background checks"
+        error={showErrors && !agreed ? 'Agree to background checks to continue.' : undefined}
+      >
+        <Text style={type.body}>{SCREENING_CONSENT_TEXT}</Text>
+        <Text style={type.caption}>
+          A match is reviewed by a person before anything is shown to a practice.
+        </Text>
+      </CheckField>
+    </View>
+  );
+}
+
 export function BasicInfoScreen({ state, dispatch, services }: Props) {
   const emailLocked = !isEmailEditable(state);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
+  const [attempted, setAttempted] = useState(false);
+  const complete = isPersonComplete(state.person);
 
   /**
    * This is where the claim is spent and the session begins.
@@ -321,101 +408,82 @@ export function BasicInfoScreen({ state, dispatch, services }: Props) {
    * first real request answered 401.
    */
   async function handleContinue() {
-    const claimToken = state.claim?.claimToken;
     if (busy) return;
-    if (!claimToken) {
-      // No claim to spend. Nothing else mints a session today, so there is
-      // nothing to do here but carry on and let the gates hold.
-      dispatch({ type: 'NEXT' });
+    // Say what is missing rather than sitting on a dead button. The date and
+    // the agreement are new required fields, and a greyed-out Continue gave
+    // no hint which one was holding things up.
+    if (!complete) {
+      setAttempted(true);
+      setFailure(`Still needed: ${missingDetails(state.person).join(', ')}.`);
       return;
     }
-
     setBusy(true);
     setFailure(undefined);
+
+    const claimToken = state.claim?.claimToken;
     try {
-      const session = await services.claim.confirm(claimToken, state.person);
-      dispatch({ type: 'SET_AUTH_SESSION', session });
+      if (claimToken) {
+        // The invitation path spends the claim here, and that is what mints
+        // the session.
+        const session = await services.claim.confirm(claimToken, state.person);
+        dispatch({ type: 'SET_AUTH_SESSION', session });
+      }
+
+      // Both paths save. On the open path the session already exists from the
+      // code, and these details were previously collected, shown back to the
+      // person, and never sent anywhere.
+      const snapshot = await services.person.save(state.authSession, state.person);
+      dispatch({ type: 'HYDRATE', snapshot });
       dispatch({ type: 'NEXT' });
     } catch {
-      setFailure('We could not finish setting you up. Try again.');
+      setFailure('We could not save your details. Try again.');
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.screen}>
-      <Text style={type.title}>About you</Text>
+    <Screen>
+      <Title>About you</Title>
+      <Caption>This is what a practice sees alongside what was checked.</Caption>
 
       {personFields.map((field) => {
         const locked = field.key === 'email' && emailLocked;
         return (
-          <View key={field.key} style={styles.field}>
-            <Text style={type.label}>{field.label}</Text>
-            <TextInput
-              style={[styles.input, locked && styles.lockedInput]}
-              value={state.person[field.key]}
-              editable={!locked}
-              onChangeText={(text) => dispatch({ type: 'UPDATE_PERSON', field: field.key, value: text })}
-              placeholderTextColor={colors.muted}
-              autoCapitalize={field.key === 'email' ? 'none' : 'words'}
-              accessibilityLabel={field.label}
-            />
-            {locked ? (
-              <Text style={type.caption}>
-                This is the address the practice listed, so we keep it as the one we check against.
-              </Text>
-            ) : null}
-          </View>
+          <Field
+            key={field.key}
+            label={field.label}
+            value={state.person[field.key]}
+            locked={locked}
+            onChangeText={(text) => dispatch({ type: 'UPDATE_PERSON', field: field.key, value: text })}
+            autoCapitalize={field.key === 'email' ? 'none' : 'words'}
+            accessibilityLabel={field.label}
+            hint={
+              locked
+                ? 'This is the address the practice listed, so we keep it as the one we check against.'
+                : undefined
+            }
+          />
         );
       })}
 
-      {failure ? <Text style={styles.error}>{failure}</Text> : null}
+      <IdentitySection person={state.person} dispatch={dispatch} showErrors={attempted} />
 
-      <Pressable
-        style={[styles.primary, (!isPersonComplete(state.person) || busy) && styles.disabled]}
+      {failure ? <ErrorText>{failure}</ErrorText> : null}
+
+      <Button
+        label="Continue"
         onPress={handleContinue}
-        disabled={!isPersonComplete(state.person) || busy}
-        accessibilityRole="button"
-      >
-        {busy ? <ActivityIndicator color={colors.ink} /> : <Text style={styles.primaryLabel}>Continue</Text>}
-      </Pressable>
-    </ScrollView>
+        busy={busy}
+      />
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { padding: spacing.lg, gap: spacing.md, backgroundColor: colors.ink, flexGrow: 1 },
-  centre: {
-    flex: 1,
-    padding: spacing.lg,
-    gap: spacing.md,
-    justifyContent: 'center',
-    backgroundColor: colors.ink,
-  },
-  card: { backgroundColor: colors.panel, borderRadius: radii.card, padding: spacing.md, gap: spacing.sm },
-  field: { gap: spacing.xs },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radii.input,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    color: colors.paper,
-    fontFamily: 'Inter_400Regular',
-    backgroundColor: colors.panel,
-  },
-  lockedInput: { color: colors.muted, borderStyle: 'dashed' },
-  code: { fontSize: 22, letterSpacing: 6, textAlign: 'center' },
-  primary: {
-    backgroundColor: colors.coral,
-    borderRadius: radii.pill,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-  },
-  disabled: { opacity: 0.5 },
-  primaryLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 15, color: colors.ink },
-  link: { ...type.caption, textAlign: 'center', textDecorationLine: 'underline' },
-  note: { ...type.caption, textAlign: 'center' },
-  error: { ...type.caption, color: colors.error },
+  spacer: { height: spacing.sm },
+  code: { fontSize: 24, letterSpacing: 8, textAlign: 'center' },
+  // Set apart from the contact fields, because these are asked for a different
+  // reason and the reason is stated above them.
+  identity: { marginTop: spacing.lg },
 });

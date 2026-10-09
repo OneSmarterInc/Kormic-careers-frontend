@@ -1,5 +1,5 @@
 import { CorridorConfig, VerificationClaim } from '../models/corridor';
-import { AuthSession, Person } from '../models/onboarding';
+import { AuthSession, Person, PersonSnapshot } from '../models/onboarding';
 import { EscalationStatus, Message, parseMessage } from '../screens/chatModel';
 
 /**
@@ -70,9 +70,36 @@ export interface OAuthService {
   poll(session: AuthSession | undefined, rungKey: string): Promise<'pending' | 'connected' | 'error'>;
 }
 
+/** A file the person chose. The bytes never enter app state, only the handle. */
+export interface PickedFile {
+  name: string;
+  uri?: string;
+  mimeType?: string;
+  /**
+   * The real File, on web only.
+   *
+   * React Native's FormData takes a `{uri, name, type}` descriptor. The
+   * browser's does not — it stringifies any object it is given, so appending
+   * that descriptor sent the literal text "[object Object]" and no bytes at
+   * all. On web the picker hands back a File and this is it.
+   */
+  file?: File;
+}
+
 export interface DocumentService {
-  pick(): Promise<{ name: string; uri?: string; mimeType?: string }>;
-  upload(session: AuthSession | undefined, rungKey: string, file: { name: string; uri?: string }): Promise<void>;
+  pick(): Promise<PickedFile>;
+  /**
+   * Several at once, for a rung that asks for screenshots. Kept separate from
+   * `pick` because the two answer different questions — one document versus a
+   * set of images — and a caller should not have to unwrap an array to get a CV.
+   */
+  pickMany(): Promise<PickedFile[]>;
+  upload(
+    session: AuthSession | undefined,
+    corridorKey: string,
+    rungKey: string,
+    file: PickedFile,
+  ): Promise<void>;
 }
 
 /** Kept as the injection point for the external provider. Not built here. */
@@ -95,6 +122,30 @@ export interface ChatService {
   ): Promise<{ queryId: string; status: EscalationStatus }[]>;
   /** The person may rename their Navigator. That is the ownership cue. */
   rename(session: AuthSession | undefined, name: string): Promise<void>;
+}
+
+/**
+ * The person's own record. Reading it back is what makes the profile
+ * something they can return to rather than something they see once.
+ */
+export interface PersonService {
+  /** Throws when there is no session, which is how the shell knows nobody is signed in. */
+  load(session: AuthSession | undefined): Promise<PersonSnapshot>;
+  /** Saves the details they typed and answers with the same shape as load. */
+  save(session: AuthSession | undefined, person: Person): Promise<PersonSnapshot>;
+}
+
+/**
+ * Ending a session. Separate from PersonService because signing out is not
+ * something you do to a person's record; it is something you do to this
+ * device's copy of their session.
+ */
+export interface SessionService {
+  /**
+   * Forgets the stored session. The person needs a fresh code to return, which
+   * is the cost of a passwordless door and is said plainly on the screen.
+   */
+  signOut(session: AuthSession | undefined): Promise<void>;
 }
 
 export interface BuildAgentService {
@@ -125,6 +176,8 @@ export interface CandidateServices {
   document: DocumentService;
   identity: IdentityService;
   chat: ChatService;
+  person: PersonService;
+  session: SessionService;
   notifications: NotificationService;
   buildAgent: BuildAgentService;
 }
@@ -144,12 +197,12 @@ export const sampleCorridor: CorridorConfig = {
     // The three postures, so a clean clone shows all three states rather than
     // only the happy one. Which real authority is which is research with a
     // defined end, and is not guessed at here.
-    { key: 'licence', displayName: 'Licence', requirement: 'required', input: 'identifier_with_jurisdiction', verifier: 'licence_bot', route: 'paid', order: 1 },
-    { key: 'certification', displayName: 'Certification', requirement: 'required', input: 'identifier', verifier: 'cert_bot', route: 'paid', order: 2 },
-    { key: 'registry', displayName: 'Registry number', requirement: 'optional', input: 'identifier', verifier: 'registry_bot', route: 'free', order: 3 },
-    { key: 'github', displayName: 'GitHub', requirement: 'not_applicable', input: 'oauth', order: 4 },
-    { key: 'cv', displayName: 'CV', requirement: 'required', input: 'document_upload', order: 5 },
-    { key: 'linkedin', displayName: 'LinkedIn', requirement: 'optional', input: 'screenshots', order: 6 },
+    { key: 'licence', displayName: 'Licence', requirement: 'required', input: 'identifier_with_jurisdiction', verifier: 'licence_bot', route: 'paid', jurisdictions: [], order: 1 },
+    { key: 'certification', displayName: 'Certification', requirement: 'required', input: 'identifier', verifier: 'cert_bot', route: 'paid', jurisdictions: [], order: 2 },
+    { key: 'registry', displayName: 'Registry number', requirement: 'optional', input: 'identifier', verifier: 'registry_bot', route: 'free', jurisdictions: [], order: 3 },
+    { key: 'github', displayName: 'GitHub', requirement: 'not_applicable', input: 'oauth', jurisdictions: [], order: 4 },
+    { key: 'cv', displayName: 'CV', requirement: 'required', input: 'document_upload', jurisdictions: [], order: 5 },
+    { key: 'linkedin', displayName: 'LinkedIn', requirement: 'optional', input: 'screenshots', jurisdictions: [], order: 6 },
   ],
 };
 
@@ -241,6 +294,13 @@ export const mockCandidateServices: CandidateServices = {
     async pick() {
       return { name: 'cv.pdf', mimeType: 'application/pdf' };
     },
+    async pickMany() {
+      await wait(150);
+      return [
+        { name: 'profile-top.png', mimeType: 'image/png' },
+        { name: 'profile-experience.png', mimeType: 'image/png' },
+      ];
+    },
     async upload() {
       await wait(200);
     },
@@ -285,6 +345,23 @@ export const mockCandidateServices: CandidateServices = {
         .map((queryId) => ({ queryId, status: 'answered' as const }));
     },
     async rename() {
+      await wait(100);
+    },
+  },
+  person: {
+    // Nobody is ever signed in on mocks, so the shell starts at Welcome
+    // exactly as it did before this route existed.
+    async load() {
+      await wait(100);
+      throw new Error('No session.');
+    },
+    async save(_session, person) {
+      await wait(100);
+      return { person, claims: [] };
+    },
+  },
+  session: {
+    async signOut() {
       await wait(100);
     },
   },

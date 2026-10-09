@@ -62,6 +62,17 @@ export const invitationOnlyNote =
   'Kormic works by invitation. A practice adds you to their list and sends you a code, ' +
   'and that code is what starts this. If you are speaking to a practice already, ask them for it.';
 
+/**
+ * The front door is both doors.
+ *
+ * There is no separate sign-in: the same address that created a profile brings
+ * it back, because the code is the whole authentication. Somebody returning
+ * needs to be told that, or the only thing on screen reads as "Join" and looks
+ * like it would start them again from nothing.
+ */
+export const joinOrSignInNote =
+  'New here or coming back, it is the same address. We send a code, and if you already have a profile it opens that one.';
+
 export function attemptsLine(used: number): string | undefined {
   const left = MAX_ATTEMPTS - used;
   if (used === 0 || left <= 0) return undefined;

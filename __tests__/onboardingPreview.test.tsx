@@ -63,6 +63,38 @@ describe('approved onboarding interactions', () => {
     await press('Remove');
     expect(JSON.stringify(tree.toJSON())).not.toContain('resume.pdf');
   });
+  it.each([0, 2, undefined])(
+    'shows the actual upload outcome (%s) before advancing, without uploading twice',
+    async (facts) => {
+      const { submit, upload, dispatch } = await mount(
+        jest.fn().mockResolvedValue({ name: 'cv.pdf', size: 20 }),
+        jest.fn().mockResolvedValue({ facts }),
+      );
+      submit.mockResolvedValue({
+        rungKey: cv.key,
+        factType: 'cv',
+        factValue: '',
+        method: 'self_attested',
+        checkedAt: '2026-10-10',
+        status: 'active',
+      });
+      await press('Choose file');
+      await press('Continue');
+      const text = JSON.stringify(tree.toJSON());
+      expect(text).toContain(
+        facts === 0
+          ? 'no information was extracted'
+          : facts === undefined
+            ? 'did not report an extraction outcome'
+            : 'This is not verification',
+      );
+      expect(dispatch).not.toHaveBeenCalledWith({ type: 'NEXT' });
+      await press('Continue');
+      expect(dispatch).toHaveBeenCalledWith({ type: 'NEXT' });
+      expect(upload).toHaveBeenCalledTimes(1);
+      expect(submit).toHaveBeenCalledTimes(1);
+    },
+  );
   it('invalidates a previous valid date while retaining partial manual input', async () => {
     let current = '';
     function Harness() {

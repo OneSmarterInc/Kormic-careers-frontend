@@ -10,10 +10,8 @@ export interface AppConfig {
   apiHost: string;
   corridorKey: string;
   /**
-   * Whether to run against `mockCandidateServices`. It is on in the checked-in
-   * app.json so a clean clone starts without a backend, which is the first
-   * thing the brief asks a new developer to do. Turning it off is the whole
-   * switch to the real API; there is no other flag.
+   * Whether to run against mockCandidateServices. The committed default is
+   * false. Environment host overrides do not enable mocks.
    */
   useMocks: boolean;
   /**
@@ -49,6 +47,14 @@ export function readConfig(extra: unknown, scheme?: string): AppConfig {
     throw new Error('Configuration error: expo.extra.apiHost is missing');
   }
 
+  if (host) {
+    try {
+      const url = new URL(host);
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || url.pathname !== '/') throw new Error();
+    } catch {
+      throw new Error('Configuration error: apiHost must be an HTTP(S) server origin, without an /api path, credentials, query or fragment');
+    }
+  }
   return {
     apiHost: host,
     corridorKey: text(record, 'corridorKey') || FALLBACK_CORRIDOR_KEY,

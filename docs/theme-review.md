@@ -202,3 +202,20 @@ Remaining review limits:
 - Production clean-URL fallback remains a hosting configuration requirement, unchanged by this work.
 
 No backend source, configuration, migrations, deployment, API contract or main branch was changed.
+
+## Frontend/backend alignment — 10 October 2026
+
+Frontend only: input limits now mirror serializer limits; previous-name lists and loaded drafts are checked before save. DRF field/list errors are retained by the API client and shown beside personal/credential fields. Upload responses distinguish zero findings, extracted information, and an unknown outcome. After a successful document submission a receipt remains visible; Continue advances without uploading again. File-retention notes reflect the server's deletion policy. Verification wording no longer asserts an active job based solely on corridor configuration. DOB still sends ISO calendar dates.
+
+`app.config.js` adds optional `EXPO_PUBLIC_API_HOST` and `EXPO_PUBLIC_CORRIDOR_KEY` overrides. Existing localhost:8900/sample settings and useMocks=false are retained. Use a laptop LAN address for physical devices, or an approved HTTPS API origin for deployment. The host must be an origin without an /api suffix. Backend CORS/allowed hosts must already permit the selected environment. No server address is guessed and no backend configuration is changed.
+
+PowerShell example for the existing laptop browser setup:
+```powershell
+$env:EXPO_PUBLIC_API_HOST = "http://localhost:8900"
+npm.cmd run web -- --clear --port 8081
+```
+For mobile, replace localhost with the laptop's actual reachable LAN address. Restart Expo after changing overrides. Public environment variables contain addresses only, never credentials.
+
+File picker formats remain PDF/DOC/DOCX and images. Narrowing this list requires confirmed support from the separately installed parser. Backend batch screenshot aggregation, explicit verification job state, file validation, live email delivery, development stubs and OAuth remain backend work requiring separate approval. No original-file storage was introduced.
+
+Validation for this alignment change: 214 tests across 9 suites, TypeScript and Expo web/Android/iOS exports passed. ESLint reports only the two existing ladder.test.ts duplicate-import warnings. Browser regression checks passed for failed uploads, date entry/calendar selection, screenshot selection/removal, refresh recovery and responsive personal-details layouts at five widths, with no page errors. Upload outcome acknowledgement/no-repeat submission is covered by component tests. Default configuration and explicit host override were checked. Live backend processing and physical devices were not tested.

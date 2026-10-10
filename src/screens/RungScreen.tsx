@@ -1,3 +1,4 @@
+import { ApiError, requestFailure } from '../services/api';
 import { LineIcon } from '../ui/LineIcon';
 import React, { useEffect, useRef, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -71,6 +72,8 @@ export function RungScreen({ state, dispatch, services }: Props) {
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [receipt, setReceipt] = useState<string | undefined>();
 
   const rungState = progress?.state;
   // An OAuth rung is polled by its own handler; polling it here as well would
@@ -190,6 +193,8 @@ export function RungScreen({ state, dispatch, services }: Props) {
       );
       setFailure(undefined);
       setTouched(false);
+      setReceipt(undefined);
+      setFieldErrors({});
     } catch {
       setFailure('The file could not be read. Please choose it again.');
     } finally {
@@ -200,6 +205,8 @@ export function RungScreen({ state, dispatch, services }: Props) {
 
   function removeScreenshot(index: number) {
     if (operation.current) return;
+    setReceipt(undefined);
+    setFieldErrors({});
     setFailure(undefined);
     if (draft.attachments?.length === 1) setReviewingPhotos(false);
     setDraft((current) => ({
@@ -214,8 +221,13 @@ export function RungScreen({ state, dispatch, services }: Props) {
     // holds by construction; the check is what tells the compiler that.
     const corridorKey = state.corridor?.key;
     if (!rung || !key || !corridorKey || operation.current) return;
+    if (receipt) {
+      dispatch({ type: 'NEXT' });
+      return;
+    }
     setTouched(true);
     setFailure(undefined);
+    setFieldErrors({});
 
     if (rung.input === 'oauth') {
       operation.current = true;
@@ -238,13 +250,17 @@ export function RungScreen({ state, dispatch, services }: Props) {
       // The order is `submissionSteps`' decision, not this component's, so the
       // rule that a file goes up before the claim is written is held by a test
       // rather than by the order two awaits happen to sit in.
+      const reports: string[] = [];
       for (const step of submissionSteps(rung, draft)) {
         if (step === 'upload') {
           // filesFor decides what this rung carries, so the screen does not
           // have to know a document sits on one pair of fields and a set of
           // screenshots on another.
           for (const file of filesFor(rung, draft)) {
-            await services.document.upload(state.authSession, corridorKey, key, file);
+            const result = await services.document.upload(state.authSession, corridorKey, key, file);
+            reports.push(
+              `${file.name}: ${result?.facts === 0 ? 'received, but no information was extracted.' : result?.facts !== undefined ? 'received; the server reported extracted information. This is not verification with an issuing authority.' : 'received; the server did not report an extraction outcome.'}`,
+            );
           }
           continue;
         }
@@ -256,15 +272,17 @@ export function RungScreen({ state, dispatch, services }: Props) {
           documentUri: draft.documentUri,
         });
         dispatch({ type: 'RECORD_CLAIM', claim });
+        dispatch({ type: 'SET_RUNG_STATE', key, state: rungStateFromClaim(claim) ?? (runsOnJoin(rung) ? 'checking' : 'submitted') });
       }
 
-      // Only a rung that actually runs on join goes to checking. A rung whose
-      // authority charges stays submitted, because nothing is happening to it
-      // until a practice decides to pay, and a spinner would say otherwise.
-      if (runsOnJoin(rung)) dispatch({ type: 'SET_RUNG_STATE', key, state: 'checking' });
+      if (reports.length) {
+        setReceipt(reports.join('\n'));
+        return;
+      }
       dispatch({ type: 'NEXT' });
-    } catch {
-      setFailure('That did not save. Check your connection and try again.');
+    } catch (error) {
+      if (error instanceof ApiError) setFieldErrors(error.fields);
+      setFailure(requestFailure(error, 'That did not save. Try again.'));
       dispatch({ type: 'SET_RUNG_STATE', key, state: 'unsubmitted' });
     } finally {
       operation.current = false;
@@ -305,6 +323,7 @@ export function RungScreen({ state, dispatch, services }: Props) {
           <React.Fragment key={field.key}>
             <ChoiceField
               label={field.label}
+              error={fieldErrors.jurisdiction}
               value={draft.jurisdiction}
               options={[
                 ...field.choices.map((choice) => ({ value: choice.code, label: choice.label })),
@@ -314,14 +333,24 @@ export function RungScreen({ state, dispatch, services }: Props) {
                 // truth, rather than being refused at the door.
                 { value: OTHER_JURISDICTION, label: 'Somewhere else' },
               ]}
-              onChange={(value) => setDraft((current) => ({ ...current, jurisdiction: value }))}
+              onChange={(value) => {
+                setFieldErrors({});
+                setFailure(undefined);
+                setDraft((current) => ({ ...current, jurisdiction: value }));
+              }}
             />
             {draft.jurisdiction === OTHER_JURISDICTION ? (
               <Field
                 label="Where was it issued?"
+                maxLength={255}
+                error={fieldErrors.jurisdiction}
                 value={draft.jurisdictionOther ?? ''}
                 placeholder="Country or state"
-                onChangeText={(text) => setDraft((current) => ({ ...current, jurisdictionOther: text }))}
+                onChangeText={(text) => {
+                  setFieldErrors({});
+                  setFailure(undefined);
+                  setDraft((current) => ({ ...current, jurisdictionOther: text }));
+                }}
                 accessibilityLabel="Where was it issued?"
                 hint="We have no register for this one, so it will be recorded as something you told us."
               />
@@ -334,9 +363,14 @@ export function RungScreen({ state, dispatch, services }: Props) {
             value={draft[field.key] ?? ''}
             placeholder={field.placeholder}
             autoCapitalize="characters"
-            onChangeText={(text) => setDraft((current) => ({ ...current, [field.key]: text }))}
+            onChangeText={(text) => {
+              setFieldErrors({});
+              setFailure(undefined);
+              setDraft((current) => ({ ...current, [field.key]: text }));
+            }}
             accessibilityLabel={field.label}
-            error={field.key === 'value' ? validationError : undefined}
+            maxLength={field.key === 'value' ? 500 : 255}
+            error={fieldErrors[field.key] || (field.key === 'value' ? validationError : undefined)}
           />
         ),
       )}
@@ -351,7 +385,7 @@ export function RungScreen({ state, dispatch, services }: Props) {
             onChoose={() => chooseFiles(false)}
             busy={busy || picking}
             selected={Boolean(draft.documentName)}
-            error={failure || validationError}
+            error={fieldErrors.file || failure || validationError}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
               <View
@@ -369,14 +403,24 @@ export function RungScreen({ state, dispatch, services }: Props) {
               <View style={{ flex: 1 }}>
                 <Text style={type.bodyStrong}>{draft.documentName}</Text>
                 <Caption>
-                  {[fileSize(filesFor(rung, draft)[0] ?? { name: '' }), 'Selected, not uploaded']
+                  {[
+                    fileSize(filesFor(rung, draft)[0] ?? { name: '' }),
+                    receipt ? 'Received; original file not retained' : 'Selected, not uploaded',
+                  ]
                     .filter(Boolean)
                     .join(' · ')}
                 </Caption>
               </View>
             </View>
             <View
-              style={{ flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', columnGap: 24, rowGap: 8, marginTop: 12 }}
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'flex-end',
+                flexWrap: 'wrap',
+                columnGap: 24,
+                rowGap: 8,
+                marginTop: 12,
+              }}
             >
               <Button
                 compact
@@ -401,6 +445,8 @@ export function RungScreen({ state, dispatch, services }: Props) {
                     documentMimeType: undefined,
                     documentSize: undefined,
                   }));
+                  setFieldErrors({});
+                  setReceipt(undefined);
                   setTouched(false);
                   setFailure(undefined);
                 }}
@@ -409,7 +455,12 @@ export function RungScreen({ state, dispatch, services }: Props) {
           </UploadField>
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
             <LineIcon name="lock" />
-            <Caption>Selecting a file does not verify its contents.</Caption>
+            <View style={{ flex: 1 }}>
+              <Caption>
+                Files are processed and then deleted by the server. Selecting a file does not verify its
+                contents.
+              </Caption>
+            </View>
           </View>
         </>
       ) : null}
@@ -423,7 +474,7 @@ export function RungScreen({ state, dispatch, services }: Props) {
           onChoose={() => chooseFiles(true)}
           busy={busy || picking}
           selected={Boolean(draft.attachments?.length)}
-          error={failure || validationError}
+          error={fieldErrors.file || failure || validationError}
         >
           {draft.attachments?.length ? (
             <View style={styles.photoSummary}>
@@ -447,7 +498,9 @@ export function RungScreen({ state, dispatch, services }: Props) {
                     {draft.attachments.length} {draft.attachments.length === 1 ? 'screenshot' : 'screenshots'}{' '}
                     selected
                   </Text>
-                  <Text style={type.caption}>Selected, not uploaded</Text>
+                  <Text style={type.caption}>
+                    {receipt ? 'Received; original files not retained' : 'Selected, not uploaded'}
+                  </Text>
                   <Text style={[type.caption, { color: colors.coral, marginTop: 6 }]}>
                     Review or remove photos →
                   </Text>
@@ -522,10 +575,14 @@ export function RungScreen({ state, dispatch, services }: Props) {
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
           <LineIcon name="lock" />
           <View style={{ flex: 1 }}>
-            <Caption>You can skip this step and add screenshots later from your profile.</Caption>
+            <Caption>
+              Files are processed and then deleted by the server. You can skip this step and add screenshots
+              later.
+            </Caption>
           </View>
         </View>
       ) : null}
+      {receipt ? <StatusLine>{receipt}</StatusLine> : null}
       {status ? (
         <StatusLine tone="checked">
           {rung.input === 'document_upload' || rung.input === 'screenshots'
@@ -552,7 +609,7 @@ export function RungScreen({ state, dispatch, services }: Props) {
           disabled={picking}
         />
 
-        {canSkip(rung) ? (
+        {canSkip(rung) && !receipt ? (
           <Button
             label="Skip for now"
             block={false}

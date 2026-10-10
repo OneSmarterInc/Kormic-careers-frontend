@@ -1,3 +1,5 @@
+import { ApiError, requestFailure } from '../services/api';
+import { personLimits, personWireFields, personLimitErrors } from '../services/validation';
 import { ScreenActions } from '../ui/ScreenActions';
 import React, { useRef, useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -358,10 +360,12 @@ function IdentitySection({
   person,
   dispatch,
   showErrors,
+  fieldErrors = {},
 }: {
   person: Person;
   dispatch: (action: CandidateAction) => void;
   showErrors: boolean;
+  fieldErrors?: Record<string, string>;
 }) {
   // Held locally as typed text so a half-entered list is not repeatedly split
   // and rejoined under the person's cursor.
@@ -389,7 +393,7 @@ function IdentitySection({
           dispatch({ type: 'UPDATE_PERSON', field: 'dateOfBirth', value });
         }}
         onBlur={() => setTouched(true)}
-        error={(touched || showErrors) && dobProblem ? dobProblem : undefined}
+        error={fieldErrors.date_of_birth || ((touched || showErrors) && dobProblem ? dobProblem : undefined)}
         hint="Never shown to a practice."
       /></View>
 
@@ -408,7 +412,8 @@ function IdentitySection({
               .filter((part) => part.length > 0),
           });
         }}
-        hint="Include maiden or former names, separated by commas."
+        error={fieldErrors.previous_names}
+        hint="Up to 10 names, 255 characters each. Include maiden or former names, separated by commas."
       /></View>
       </View>
 
@@ -416,7 +421,7 @@ function IdentitySection({
         checked={agreed}
         onChange={(value) => dispatch({ type: 'SET_SCREENING_CONSENT', agreed: value })}
         accessibilityLabel="Agree to background checks"
-        error={showErrors && !agreed ? 'Agree to background checks to continue.' : undefined}
+        error={fieldErrors.screening_consent || (showErrors && !agreed ? 'Agree to background checks to continue.' : undefined)}
       >
         <Text style={[type.body, { fontSize: 12, lineHeight: 20 }]}>{SCREENING_CONSENT_TEXT}</Text>
         <Text style={type.caption}>
@@ -434,6 +439,9 @@ export function BasicInfoScreen({ state, dispatch, services }: Props) {
   const [failure, setFailure] = useState<string | undefined>();
   const [attempted, setAttempted] = useState(false);
   const complete = isPersonComplete(state.person);
+  const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
+  const limitErrors = personLimitErrors(state.person);
+  const fieldErrors = { ...serverErrors, ...limitErrors };
 
   /**
    * This is where the claim is spent and the session begins.
@@ -448,6 +456,8 @@ export function BasicInfoScreen({ state, dispatch, services }: Props) {
     // Say what is missing rather than sitting on a dead button. The date and
     // the agreement are new required fields, and a greyed-out Continue gave
     // no hint which one was holding things up.
+    setServerErrors({});
+    if (Object.keys(limitErrors).length) { setAttempted(true); setFailure('Please correct the highlighted fields and try again.'); return; }
     if (!complete) {
       setAttempted(true);
       setFailure(`Still needed: ${missingDetails(state.person).join(', ')}.`);
@@ -471,8 +481,9 @@ export function BasicInfoScreen({ state, dispatch, services }: Props) {
       const snapshot = await services.person.save(state.authSession, state.person);
       dispatch({ type: 'HYDRATE', snapshot });
       dispatch({ type: 'NEXT' });
-    } catch {
-      setFailure('We could not save your details. Try again.');
+    } catch (error) {
+      if (error instanceof ApiError) setServerErrors(error.fields);
+      setFailure(requestFailure(error, 'We could not save your details. Try again.'));
     } finally {
       setBusy(false);
     }
@@ -489,9 +500,11 @@ export function BasicInfoScreen({ state, dispatch, services }: Props) {
         return (
           <View key={field.key} style={wide ? styles.halfField : styles.fullField}><Field
             label={field.label}
+            maxLength={(personLimits as Partial<Record<string, number>>)[field.key]}
+            error={fieldErrors[personWireFields[field.key]!]}
             value={state.person[field.key]}
             locked={locked}
-            onChangeText={(text) => dispatch({ type: 'UPDATE_PERSON', field: field.key, value: text })}
+            onChangeText={(text) => { setServerErrors(current => { const next = { ...current }; delete next[personWireFields[field.key]!]; return next; }); setFailure(undefined); dispatch({ type: 'UPDATE_PERSON', field: field.key, value: text }); }}
             autoCapitalize={field.key === 'email' ? 'none' : 'words'}
             accessibilityLabel={field.label}
             hint={
@@ -504,7 +517,7 @@ export function BasicInfoScreen({ state, dispatch, services }: Props) {
       })}
       </View>
 
-      <IdentitySection person={state.person} dispatch={dispatch} showErrors={attempted} />
+      <IdentitySection person={state.person} dispatch={(action) => { setServerErrors({}); setFailure(undefined); dispatch(action); }} showErrors={attempted} fieldErrors={fieldErrors} />
 
       {failure ? <ErrorText>{failure}</ErrorText> : null}
 

@@ -88,6 +88,7 @@ export function jurisdictionForSubmission(draft: RungDraft): string | undefined 
 }
 
 export function canSubmit(rung: CorridorRung, draft: RungDraft): boolean {
+  if ((draft.value?.trim().length ?? 0) > 500 || (jurisdictionForSubmission(draft)?.length ?? 0) > 255) return false;
   switch (rung.input) {
     case 'identifier':
       return Boolean(draft.value?.trim());
@@ -214,7 +215,7 @@ export function statusLine(
     return 'Skipped. You can add this later from your profile.';
   }
   if (state === 'checking' || (state === 'submitted' && runsOnJoin(rung))) {
-    return 'Checking this now. You can carry on; we will tell you when it comes back.';
+    return 'Submitted. A completed verification result is not available yet.';
   }
   if (state === 'submitted' && awaitsPractice(rung)) {
     // The honest third state. A verifier exists for this rung and nothing is
@@ -242,6 +243,8 @@ export function formatDate(iso: string): string {
 
 export function errorFor(rung: CorridorRung, draft: RungDraft, touched: boolean): string | undefined {
   if (!touched || canSubmit(rung, draft)) return undefined;
+  if ((draft.value?.trim().length ?? 0) > 500) return 'Use no more than 500 characters for this credential.';
+  if ((jurisdictionForSubmission(draft)?.length ?? 0) > 255) return 'Use no more than 255 characters for the issuing location.';
   switch (rung.input) {
     case 'identifier':
       return `Enter your ${rung.displayName.toLowerCase()} number.`;

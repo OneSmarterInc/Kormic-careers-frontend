@@ -87,6 +87,8 @@ export interface PickedFile {
   file?: File;
 }
 
+export interface UploadResult { facts?: number; evidenceHash?: string }
+
 export interface DocumentService {
   pick(): Promise<PickedFile | undefined>;
   /**
@@ -100,7 +102,7 @@ export interface DocumentService {
     corridorKey: string,
     rungKey: string,
     file: PickedFile,
-  ): Promise<void>;
+  ): Promise<UploadResult | void>;
 }
 
 /** Kept as the injection point for the external provider. Not built here. */

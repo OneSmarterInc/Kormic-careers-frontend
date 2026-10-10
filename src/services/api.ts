@@ -16,12 +16,14 @@ export type ApiErrorCode = WireError['code'] | 'network';
 export class ApiError extends Error {
   readonly code: ApiErrorCode;
   readonly status: number;
+  readonly fields: Record<string, string>;
 
-  constructor(code: ApiErrorCode, status: number, detail: string) {
+  constructor(code: ApiErrorCode, status: number, detail: string, fields: Record<string, string> = {}) {
     super(detail);
     this.name = 'ApiError';
     this.code = code;
     this.status = status;
+    this.fields = fields;
     // Required for `instanceof` to survive the transpile down-level.
     Object.setPrototypeOf(this, ApiError.prototype);
   }
@@ -88,7 +90,17 @@ function toApiError(status: number, payload: unknown): ApiError {
       ? (declared as ApiErrorCode)
       : statusToCode(status);
   const detail = typeof record.detail === 'string' ? record.detail : `Request failed (${status})`;
-  return new ApiError(code, status, detail);
+  const fields: Record<string, string> = {};
+  if (status === 400 || status === 422) {
+    const messages = (value: unknown): string[] => typeof value === 'string' ? [value] : Array.isArray(value) ? value.flatMap(messages) : value && typeof value === 'object' ? Object.values(value).flatMap(messages) : [];
+    for (const [key, value] of Object.entries(record)) {
+      if (key !== 'code' && key !== 'detail') {
+        const message = messages(value).join(' ');
+        if (message) fields[key] = message;
+      }
+    }
+  }
+  return new ApiError(code, status, detail, fields);
 }
 
 async function readBody(response: Response): Promise<unknown> {
@@ -223,4 +235,16 @@ export function createApiClient(deps: ApiDeps): ApiClient {
       return (await deps.tokens.read())?.personId;
     },
   };
+}
+
+/** Keep field errors actionable without exposing server tracebacks or HTML. */
+export function requestFailure(error: unknown, fallback: string): string {
+  if (!(error instanceof ApiError)) return fallback;
+  if (Object.keys(error.fields).length) return error.fields.non_field_errors || 'Please correct the highlighted fields and try again.';
+  if (error.code === 'network') return 'We could not reach the server. Check your connection and try again.';
+  if (error.status === 413) return 'This file is larger than the server accepts. Choose a smaller file.';
+  if (error.status === 415) return 'The server could not accept this file format. Choose another file.';
+  if (error.code === 'unauthorised') return 'Your session has ended. Sign in again.';
+  if (error.code === 'locked') return 'Too many requests. Please wait and try again.';
+  return fallback;
 }

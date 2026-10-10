@@ -271,11 +271,15 @@ export function createLiveCandidateServices(deps: LiveServiceDeps): CandidateSer
         // it: a rung key is only unique within a corridor.
         form.append('corridor_key', corridorKey);
 
-        await api.send<void>({
+        const response = await api.send<{ facts?: unknown; evidence_hash?: unknown }>({
           path: endpoints.rungDocument(rungKey),
           method: 'POST',
           form,
         });
+        return {
+          facts: typeof response?.facts === 'number' && Number.isInteger(response.facts) && response.facts >= 0 ? response.facts : undefined,
+          evidenceHash: typeof response?.evidence_hash === 'string' ? response.evidence_hash : undefined,
+        };
       },
     },
 
@@ -359,7 +363,7 @@ export function createLiveCandidateServices(deps: LiveServiceDeps): CandidateSer
     notifications,
 
     buildAgent: {
-      stages: ['Reading your profile', 'Checking what you gave us', 'Putting it together'],
+      stages: ['Reading your profile', 'Organising what you gave us', 'Putting it together'],
     },
   };
 }

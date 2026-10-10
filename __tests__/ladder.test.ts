@@ -257,7 +257,7 @@ describe('rung screen model', () => {
       'Saved. A practice can have this confirmed when they take you forward.',
     );
     expect(statusLine(registry, { state: 'submitted' }, [])).toBe(
-      'Checking this now. You can carry on; we will tell you when it comes back.',
+      'Submitted. A completed verification result is not available yet.',
     );
     expect(statusLine(cv, { state: 'submitted' }, [])).toBe('Saved. Nobody has checked this yet.');
   });
@@ -822,7 +822,7 @@ describe('a paid check waits for a practice to decide', () => {
     expect(methodLine(undefined, 'submitted', new Date(), licence)).toBe(
       'Held. Confirmed if a practice takes you forward',
     );
-    expect(methodLine(undefined, 'submitted', new Date(), registry)).toBe('Checking now');
+    expect(methodLine(undefined, 'submitted', new Date(), registry)).toBe('Verification result not available');
     expect(methodLine(undefined, 'submitted', new Date(), cv)).toBe(
       'Provided by you, not yet checked',
     );

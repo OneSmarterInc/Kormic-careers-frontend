@@ -131,9 +131,9 @@ export function methodLine(
 ): string {
   if (!claim) {
     if (rungState === 'skipped') return 'Not added';
-    if (rungState === 'checking') return 'Checking now';
+    if (rungState === 'checking') return 'Verification result not available';
     if (rungState === 'submitted') {
-      if (rung && runsOnJoin(rung)) return 'Checking now';
+      if (rung && runsOnJoin(rung)) return 'Verification result not available';
       if (rung && awaitsPractice(rung)) return 'Held. Confirmed if a practice takes you forward';
       return 'Provided by you, not yet checked';
     }

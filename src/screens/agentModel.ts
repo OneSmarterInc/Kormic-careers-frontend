@@ -76,8 +76,8 @@ export function handoverLines(state: CandidateState, rows: ProfileRow[]): string
   if (checking.length > 0) {
     lines.push(
       checking.length === 1
-        ? `We are still checking ${checking[0]?.displayName}. It will update itself.`
-        : `We are still checking ${checking.length} things. They will update themselves.`,
+        ? `A completed verification result is not available for ${checking[0]?.displayName}.`
+        : `Completed verification results are not available for ${checking.length} items.`,
     );
   }
 

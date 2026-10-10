@@ -178,3 +178,27 @@ with no horizontal overflow or page errors; the rendered desktop layout was revi
 - Compact profile heading, status counts, Navigator panel and account controls. Desktop sidebar begins at 1000px. Shared Screen supports opt-in compact padding and hidden vertical scroll indicator; only Profile opts in. Scrolling itself stays enabled for small screens and long records.
 - Passed typecheck, 199 tests, web export and browser checks at 390/768/1024/1440px. A five-record API fixture fits without vertical scrolling at 1024x800 and 1440x800. Smaller widths scroll with no visible scrollbar, no horizontal overflow, and no runtime errors. Credential update/back, sign-out cancel, and opening chat passed at all four widths.
 - Existing two lint warnings remain. Live backend and physical native devices not tested. No backend, API, authentication, deployment, or mock configuration changes.
+
+## Approved onboarding preview implementation — 10 October 2026
+
+Implemented the approved standalone onboarding preview in React Native components:
+- Shared bounded content columns, preview upload panels, compact outlined icons, responsive action widths, centered actions on content-light screens and right-aligned personal-details actions.
+- CV selection is separate from Continue, with filename, available size, Replace and Remove. Screenshots retain compact first-image/+N presentation and a review/remove dialog.
+- Picker cancellation is neutral. Returned files are checked for supported types and known zero-byte content; invalid replacement preserves the previous selection. No new maximum size or server validation policy was introduced. Busy operations prevent duplicate selection/submission. Upload and claim calls retain their existing order and failure behavior.
+- DOB accepts MM-DD-YYYY and displays the same format for calendar selection. Valid dates convert to ISO date-only values without timestamp parsing; incomplete/invalid input is explicitly marked as a draft so it cannot reuse a previously valid date. Existing minimum-age, consent and backend contract rules are preserved. Web uses an accessible modal calendar; native retains the platform picker.
+- Completion renders actual record summaries and retains the existing completion gate. No preview toolbar, sample profile, simulated upload success or verification state was added to the app.
+
+Validation:
+- TypeScript check passed; 204 tests passed across 8 suites, including new picker cancellation, replacement, upload-failure and date-input regression tests.
+- ESLint passed with the two pre-existing duplicate-import warnings in ladder.test.ts.
+- Expo web, Android and iOS exports passed (exports are not physical-device tests).
+- Headless Chromium checks exercised real browser file selection against isolated test-only API responses: missing CV, selected CV, failed upload without navigation, manual DOB, month/year calendar selection, screenshots +2 to +1 after removal, and refresh retaining the screenshots route. No browser page errors.
+- Personal-details layout checked at 390, 768, 1024, 1440 and 1920px for document overflow and reachable actions. Rendered Steps, Personal Details, CV, LinkedIn and Completion screenshots were inspected against the preview. Preview-only descriptive placeholders were replaced by real corridor/record data.
+
+Remaining review limits:
+- Live authenticated backend uploads, verification and completion were not exercised; the browser used temporary isolated responses, never application mocks or production records.
+- Physical Android/iOS picker behavior, assistive-technology testing, cross-browser checks and 200% browser zoom still need device review.
+- File handles remain transient: after refresh the same screen is retained, but unsent files must be reselected. Previous submission status is shown separately; the existing backend does not provide original upload recovery.
+- Production clean-URL fallback remains a hosting configuration requirement, unchanged by this work.
+
+No backend source, configuration, migrations, deployment, API contract or main branch was changed.

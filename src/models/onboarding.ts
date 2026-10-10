@@ -179,7 +179,7 @@ export function dateOfBirthProblem(value: string | undefined, now: Date = new Da
   const text = (value ?? '').trim();
   if (!text) return 'Add your date of birth.';
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
-  if (!match) return 'Pick a date from the calendar.';
+  if (!match) return 'Enter a real date in MM-DD-YYYY format.';
   const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
   const date = new Date(Date.UTC(year, month - 1, day));
   if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {

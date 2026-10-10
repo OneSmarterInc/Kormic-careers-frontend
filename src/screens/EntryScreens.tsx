@@ -1,3 +1,4 @@
+import { ScreenActions } from '../ui/ScreenActions';
 import React, { useRef, useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Body, Button, Caption, Card, CheckField, DateField, ErrorText, Eyebrow, Field, Screen, Title } from '../ui';
@@ -12,7 +13,7 @@ import {
 } from '../models/onboarding';
 import { CandidateServices } from '../services/candidateServices';
 import { CandidateAction } from '../state/candidateReducer';
-import { colors, fonts, layout, radii, spacing, type } from '../theme/tokens';
+import { colors, fonts, layout, spacing, type } from '../theme/tokens';
 import { CODE_LENGTH, attemptsLine, claimError, isCodeWellFormed, joinOrSignInNote } from './claimModel';
 import { stepCountLine } from './tourModel';
 import { routeAfterSignIn } from '../navigation/routes';
@@ -364,7 +365,7 @@ function IdentitySection({
 }) {
   // Held locally as typed text so a half-entered list is not repeatedly split
   // and rejoined under the person's cursor.
-  const sideBySide = useWindowDimensions().width >= 800;
+  const sideBySide = useWindowDimensions().width > 760;
   const [names, setNames] = useState((person.previousNames ?? []).join(', '));
   const [touched, setTouched] = useState(false);
   const dobProblem = dateOfBirthProblem(person.dateOfBirth);
@@ -385,9 +386,9 @@ function IdentitySection({
         min={isoYearsAgo(120)}
         accessibilityLabel="Date of birth"
         onChange={(value) => {
-          setTouched(true);
           dispatch({ type: 'UPDATE_PERSON', field: 'dateOfBirth', value });
         }}
+        onBlur={() => setTouched(true)}
         error={(touched || showErrors) && dobProblem ? dobProblem : undefined}
         hint="Never shown to a practice."
       /></View>
@@ -417,7 +418,7 @@ function IdentitySection({
         accessibilityLabel="Agree to background checks"
         error={showErrors && !agreed ? 'Agree to background checks to continue.' : undefined}
       >
-        <Text style={type.body}>{SCREENING_CONSENT_TEXT}</Text>
+        <Text style={[type.body, { fontSize: 12, lineHeight: 20 }]}>{SCREENING_CONSENT_TEXT}</Text>
         <Text style={type.caption}>
           A match is reviewed by a person before anything is shown to a practice.
         </Text>
@@ -428,7 +429,7 @@ function IdentitySection({
 
 export function BasicInfoScreen({ state, dispatch, services }: Props) {
   const emailLocked = true;
-  const wide = useWindowDimensions().width >= 760;
+  const wide = useWindowDimensions().width > 520;
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
   const [attempted, setAttempted] = useState(false);
@@ -478,9 +479,9 @@ export function BasicInfoScreen({ state, dispatch, services }: Props) {
   }
 
   return (
-    <Screen contentWidth={layout.form}>
-      <Title>About you</Title>
-      <Caption>This is what a practice sees alongside what was checked.</Caption>
+    <Screen onboarding contentWidth={layout.form}>
+      <View style={{ gap: 8 }}><Eyebrow>The basics</Eyebrow><Title onboarding>About you</Title>
+      <Caption>This is what a practice sees alongside what was checked.</Caption></View>
 
       <View style={[styles.formGrid, wide && styles.formGridWide]}>
       {personFields.map((field) => {
@@ -507,11 +508,11 @@ export function BasicInfoScreen({ state, dispatch, services }: Props) {
 
       {failure ? <ErrorText>{failure}</ErrorText> : null}
 
-      <View style={{ width: '100%', maxWidth: wide ? 260 : undefined, alignSelf: 'flex-end', marginTop: spacing.sm }}><Button
+      <ScreenActions align="end"><Button compact
         label="Continue"
         onPress={handleContinue}
         busy={busy}
-      /></View>
+      /></ScreenActions>
     </Screen>
   );
 }
@@ -533,7 +534,7 @@ const styles = StyleSheet.create({
   // reason and the reason is stated above them.
   identityFields: { gap: spacing.md },
   identityFieldsWide: { flexDirection: 'row', alignItems: 'flex-start' },
-  dobColumn: { width: 300 },
+  dobColumn: { width: 280 },
   namesColumn: { flex: 1, minWidth: 0 },
-  identity: { marginTop: spacing.xs, gap: spacing.sm, padding: spacing.md, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.line, borderRadius: radii.card },
+  identity: { marginTop: spacing.xxs, gap: spacing.sm, padding: 18, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.line, borderRadius: 17 },
 });

@@ -1,10 +1,11 @@
 import React, { useMemo } from 'react';
-import {  StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { CandidateState } from '../models/onboarding';
 import { CandidateAction } from '../state/candidateReducer';
 import { colors, radii, spacing, type } from '../theme/tokens';
-import { Button, Screen } from '../ui';
-import { buildTour, stepCountLine, tourPosition } from './tourModel';
+import { ScreenActions } from '../ui/ScreenActions';
+import { Button, Eyebrow, Screen, Title } from '../ui';
+import { buildTour, stepCountLine } from './tourModel';
 
 interface Props {
   state: CandidateState;
@@ -20,7 +21,7 @@ export function TourScreen({ state, dispatch }: Props) {
   const index = Math.min(state.tourIndex ?? 0, Math.max(0, stops.length - 1));
   const setIndex = (index: number) => dispatch({ type: 'SET_TOUR_INDEX', index });
   const stop = stops[index];
-  const position = tourPosition(stops, index);
+
   const last = index >= stops.length - 1;
 
   if (!stop) {
@@ -32,33 +33,63 @@ export function TourScreen({ state, dispatch }: Props) {
   }
 
   return (
-    <Screen>
-      <View style={styles.dots} accessibilityLabel={`Part ${position.current} of ${position.total}`}>
-        {stops.map((entry, entryIndex) => (
-          <View key={entry.key} style={[styles.dot, entryIndex <= index && styles.dotOn]} />
-        ))}
-      </View>
-
+    <Screen onboarding>
       <View style={styles.body}>
-        <Text style={type.caption}>{stepCountLine(state.corridor)}</Text>
-        <Text style={type.title}>{stop.heading}</Text>
+        <Eyebrow>A clear path to your profile</Eyebrow>
+        <Title onboarding>{stop.heading}</Title>
+        {stop.key !== 'steps' ? <Text style={type.caption}>{stepCountLine(state.corridor)}</Text> : null}
         <Text style={type.body}>{stop.body}</Text>
 
         {stop.items ? (
           <View style={styles.card}>
-            {stop.items.map((item) => (
-              <Text key={item} style={styles.item}>
-                {item}
-              </Text>
+            {stop.items.map((item, index) => (
+              <View
+                key={item}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                  paddingVertical: 12,
+                  borderTopWidth: index ? 1 : 0,
+                  borderColor: colors.line,
+                }}
+              >
+                <View
+                  style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: 13,
+                    backgroundColor: colors.panelRaised,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text style={type.caption}>{index + 1}</Text>
+                </View>
+                <Text style={[styles.item, { flex: 1 }]}>
+                  {stop.key === 'steps' ? item.replace(/ \(optional\)$/, '') : item}
+                </Text>
+                {stop.key === 'steps' ? (
+                  <Text style={[type.caption, { fontSize: 11 }]}>
+                    {item.endsWith('(optional)') ? 'Optional' : 'Required'}
+                  </Text>
+                ) : null}
+              </View>
             ))}
           </View>
         ) : null}
       </View>
 
-      <View style={styles.footer}>
-        <Button label={last ? 'Get started' : 'Next'} onPress={() => last ? dispatch({ type: 'NEXT' }) : setIndex(index + 1)} />
-        {!last ? <Button label="Skip the tour" variant="quiet" onPress={() => dispatch({ type: 'NEXT' })} /> : null}
-      </View>
+      <ScreenActions>
+        <Button
+          compact
+          label={last ? 'Get started' : 'Next'}
+          onPress={() => (last ? dispatch({ type: 'NEXT' }) : setIndex(index + 1))}
+        />
+        {!last ? (
+          <Button compact label="Skip the tour" variant="quiet" onPress={() => dispatch({ type: 'NEXT' })} />
+        ) : null}
+      </ScreenActions>
     </Screen>
   );
 }
@@ -68,12 +99,15 @@ const styles = StyleSheet.create({
   dots: { flexDirection: 'row', gap: spacing.xs },
   dot: { height: 4, flex: 1, backgroundColor: colors.line, borderRadius: radii.pill },
   dotOn: { backgroundColor: colors.coral },
-  body: { gap: spacing.sm, paddingTop: spacing.lg },
+  body: { gap: spacing.sm },
   card: {
     backgroundColor: colors.panel,
-    borderRadius: radii.card,
-    padding: spacing.md,
-    gap: spacing.xs,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.line,
+    paddingHorizontal: 20,
+    paddingVertical: 5,
+    gap: 0,
     marginTop: spacing.sm,
   },
   item: { ...type.body, color: colors.paper },

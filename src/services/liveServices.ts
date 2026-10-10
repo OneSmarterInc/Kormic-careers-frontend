@@ -226,8 +226,8 @@ export function createLiveCandidateServices(deps: LiveServiceDeps): CandidateSer
           multiple: false,
         });
         const asset = result.canceled ? undefined : result.assets[0];
-        if (!asset) throw new ApiError('bad_code', 0, 'No file chosen.');
-        return { name: asset.name, uri: asset.uri, mimeType: asset.mimeType, file: asset.file };
+        if (!asset) return undefined;
+        return { name: asset.name, uri: asset.uri, mimeType: asset.mimeType, size: asset.size, file: asset.file };
       },
 
       async pickMany() {
@@ -243,6 +243,7 @@ export function createLiveCandidateServices(deps: LiveServiceDeps): CandidateSer
           name: asset.name,
           uri: asset.uri,
           mimeType: asset.mimeType,
+          size: asset.size,
           file: asset.file,
         }));
       },

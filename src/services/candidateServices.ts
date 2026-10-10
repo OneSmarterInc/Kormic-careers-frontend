@@ -75,6 +75,7 @@ export interface PickedFile {
   name: string;
   uri?: string;
   mimeType?: string;
+  size?: number;
   /**
    * The real File, on web only.
    *
@@ -87,7 +88,7 @@ export interface PickedFile {
 }
 
 export interface DocumentService {
-  pick(): Promise<PickedFile>;
+  pick(): Promise<PickedFile | undefined>;
   /**
    * Several at once, for a rung that asks for screenshots. Kept separate from
    * `pick` because the two answer different questions — one document versus a

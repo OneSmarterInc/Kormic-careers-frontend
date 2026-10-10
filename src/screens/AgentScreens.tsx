@@ -1,3 +1,5 @@
+import { LineIcon } from '../ui/LineIcon';
+import { ScreenActions } from '../ui/ScreenActions';
 import React, { useEffect, useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Body, Button, Card, Eyebrow, Screen, Title } from '../ui';
@@ -19,7 +21,12 @@ interface Props {
  * have confirmed any of it, because at this point nothing has come back from a
  * verifier and several rungs may never be checked at all.
  */
-export function BuildingAgentScreen({ state, dispatch, services, stageMs = 900 }: Props & { stageMs?: number }) {
+export function BuildingAgentScreen({
+  state,
+  dispatch,
+  services,
+  stageMs = 900,
+}: Props & { stageMs?: number }) {
   const stages = services.buildAgent.stages;
   const progress = buildProgress(stages, state.buildStage);
   const rows = useMemo(() => buildProfileRows(state), [state]);
@@ -34,22 +41,70 @@ export function BuildingAgentScreen({ state, dispatch, services, stageMs = 900 }
   }, [dispatch, progress.done, state.buildStage, stageMs]);
 
   return (
-    <Screen>
-      <Title>Putting your profile together</Title>
-
-      {progress.done ? (
-        <Text style={type.body}>{buildSummaryLine(rows)}</Text>
-      ) : (
-        <View style={styles.stageBlock}>
-          <ActivityIndicator color={colors.coral} />
-          <Text style={type.body}>{progress.stage}</Text>
-          <Text style={type.caption}>
-            {progress.current} of {progress.total}
-          </Text>
+    <Screen onboarding>
+      <View style={{ gap: 8 }}>
+        <Eyebrow>Your next step</Eyebrow>
+        <Title onboarding>Putting your profile together</Title>
+        <Body>Your records and their checking status stay together in your profile.</Body>
+      </View>
+      <View
+        style={{
+          borderWidth: 1,
+          borderColor: colors.line,
+          borderRadius: 20,
+          padding: 24,
+          gap: 16,
+          backgroundColor: colors.panel,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          <View
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 14,
+              backgroundColor: colors.panelRaised,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <LineIcon name="upload" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={type.bodyStrong}>A clear view of what you provided</Text>
+            <Text style={type.caption}>Verification is shown separately for each record.</Text>
+          </View>
         </View>
-      )}
 
-      <Button label="Continue" onPress={() => dispatch({ type: 'NEXT' })} disabled={!progress.done} />
+        {progress.done ? (
+          <View style={{ gap: 10 }}>
+            <View style={{ borderTopWidth: 1, borderColor: colors.line, paddingTop: 10, gap: 4 }}>
+              <Text style={type.label}>Professional records</Text>
+              <Text style={type.caption}>{buildSummaryLine(rows)}</Text>
+            </View>
+            <View style={{ borderTopWidth: 1, borderColor: colors.line, paddingTop: 10, gap: 4 }}>
+              <Text style={type.label}>Your {navigatorName(state.agentName)}</Text>
+              <Text style={type.caption}>Questions about this position</Text>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.stageBlock}>
+            <ActivityIndicator color={colors.coral} />
+            <Text style={type.body}>{progress.stage}</Text>
+            <Text style={type.caption}>
+              {progress.current} of {progress.total}
+            </Text>
+          </View>
+        )}
+      </View>
+      <ScreenActions>
+        <Button
+          compact
+          label="Continue"
+          onPress={() => dispatch({ type: 'NEXT' })}
+          disabled={!progress.done}
+        />
+      </ScreenActions>
     </Screen>
   );
 }
@@ -67,11 +122,11 @@ export function AgentLiveScreen({ state, dispatch, services }: Props) {
   const displayName = navigatorName(state.agentName);
 
   return (
-    <Screen>
-      <Title>Meet your {displayName}</Title>
+    <Screen onboarding>
+      <Title onboarding>Meet your {displayName}</Title>
       <Body>
-        It answers questions about this position using what the practice has told us. When the
-        answer sits with them, it asks and tells you it is checking.
+        It answers questions about this position using what the practice has told us. When the answer sits
+        with them, it asks and tells you it is checking.
       </Body>
 
       {lines.length > 0 ? (
@@ -85,15 +140,17 @@ export function AgentLiveScreen({ state, dispatch, services }: Props) {
         </Card>
       ) : null}
 
-      <Button
-        label="Ask about this position"
-        onPress={() => dispatch({ type: 'NAVIGATE', route: 'Chat' })}
-      />
-      <Button
-        label="See your profile"
-        variant="quiet"
-        onPress={() => dispatch({ type: 'NAVIGATE', route: 'Profile' })}
-      />
+      <ScreenActions>
+        <Button
+          label="Ask about this position"
+          onPress={() => dispatch({ type: 'NAVIGATE', route: 'Chat' })}
+        />
+        <Button
+          label="See your profile"
+          variant="quiet"
+          onPress={() => dispatch({ type: 'NAVIGATE', route: 'Profile' })}
+        />
+      </ScreenActions>
     </Screen>
   );
 }

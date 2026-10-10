@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { LineIcon } from '../ui/LineIcon';
+import React, { useEffect, useRef, useState } from 'react';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   Body,
   Button,
   Caption,
-  Card,
   ChoiceField,
   ErrorText,
   Eyebrow,
@@ -18,6 +18,9 @@ import { CandidateState, claimsForRung, rungKeyOf } from '../models/onboarding';
 import { CandidateAction } from '../state/candidateReducer';
 import { CandidateServices, PickedFile } from '../services/candidateServices';
 import { oauthPollPolicy, poll, pollHandle, verifierPollPolicy } from '../services/polling';
+import { ScreenActions } from '../ui/ScreenActions';
+import { UploadField } from '../ui/UploadField';
+import { fileSize, selectionProblem } from '../services/fileSelection';
 import { colors, radii, spacing, type } from '../theme/tokens';
 import {
   RungDraft,
@@ -46,7 +49,8 @@ interface Props {
  * shape and renders accordingly, and it knows the name of no credential.
  */
 export function RungScreen({ state, dispatch, services }: Props) {
-  const wide = useWindowDimensions().width >= 600;
+  const operation = useRef(false);
+  const [picking, setPicking] = useState(false);
   const key = rungKeyOf(state.route);
   const rung: CorridorRung | undefined = key && state.corridor ? findRung(state.corridor, key) : undefined;
   const progress = key ? state.rungs[key] : undefined;
@@ -55,7 +59,10 @@ export function RungScreen({ state, dispatch, services }: Props) {
   // prove stable. Letting it do the work removes the only lint error here.
   const claims = key ? claimsForRung(state, key) : [];
 
-  const [draft, setDraft] = useState<RungDraft>({ value: progress?.value, jurisdiction: progress?.jurisdiction });
+  const [draft, setDraft] = useState<RungDraft>({
+    value: progress?.value,
+    jurisdiction: progress?.jurisdiction,
+  });
   const draftJurisdiction = jurisdictionForSubmission(draft);
   useEffect(() => {
     if (key) dispatch({ type: 'SAVE_RUNG_DRAFT', key, value: draft.value, jurisdiction: draftJurisdiction });
@@ -68,8 +75,7 @@ export function RungScreen({ state, dispatch, services }: Props) {
   const rungState = progress?.state;
   // An OAuth rung is polled by its own handler; polling it here as well would
   // ask the same question twice.
-  const awaitsVerifier =
-    Boolean(rung?.verifier) && rung?.input !== 'oauth' && rungState === 'checking';
+  const awaitsVerifier = Boolean(rung?.verifier) && rung?.input !== 'oauth' && rungState === 'checking';
 
   /**
    * A rung left checking resolves itself while the screen is open. Without
@@ -152,24 +158,50 @@ export function RungScreen({ state, dispatch, services }: Props) {
       dispatch({ type: 'SET_RUNG_STATE', key: rungKey, state: 'unsubmitted' });
       setFailure(`We could not reach ${current.displayName}. Try again.`);
     } finally {
+      operation.current = false;
       setBusy(false);
     }
   }
 
-  async function addScreenshots() {
+  async function chooseFiles(images: boolean) {
+    if (operation.current) return;
+    operation.current = true;
+    setPicking(true);
     try {
-      const picked = await services.document.pickMany();
-      if (picked.length === 0) return;
-      setDraft((current) => ({
-        ...current,
-        attachments: [...(current.attachments ?? []), ...picked],
-      }));
+      const single = images ? undefined : await services.document.pick();
+      const picked = images ? await services.document.pickMany() : single ? [single] : [];
+      if (!picked.length) return;
+      const problem = picked.map((file) => selectionProblem(file, images)).find(Boolean);
+      if (problem) {
+        setFailure(problem);
+        return;
+      }
+      setDraft((current) =>
+        images
+          ? { ...current, attachments: [...(current.attachments ?? []), ...picked] }
+          : {
+              ...current,
+              documentName: picked[0]!.name,
+              documentUri: picked[0]!.uri,
+              documentFile: picked[0]!.file,
+              documentMimeType: picked[0]!.mimeType,
+              documentSize: picked[0]!.size,
+            },
+      );
+      setFailure(undefined);
+      setTouched(false);
     } catch {
-      setFailure('Those images could not be read. Try again.');
+      setFailure('The file could not be read. Please choose it again.');
+    } finally {
+      operation.current = false;
+      setPicking(false);
     }
   }
 
   function removeScreenshot(index: number) {
+    if (operation.current) return;
+    setFailure(undefined);
+    if (draft.attachments?.length === 1) setReviewingPhotos(false);
     setDraft((current) => ({
       ...current,
       attachments: (current.attachments ?? []).filter((_, at) => at !== index),
@@ -181,39 +213,19 @@ export function RungScreen({ state, dispatch, services }: Props) {
     // be made before it has loaded. In practice `rung` came from it, so this
     // holds by construction; the check is what tells the compiler that.
     const corridorKey = state.corridor?.key;
-    if (!rung || !key || !corridorKey) return;
+    if (!rung || !key || !corridorKey || operation.current) return;
     setTouched(true);
     setFailure(undefined);
 
     if (rung.input === 'oauth') {
+      operation.current = true;
       await handleOAuth(key, rung);
-      return;
-    }
-
-    if (rung.input === 'document_upload' && !draft.documentName) {
-      try {
-        const file = await services.document.pick();
-        setDraft((current) => ({
-          ...current,
-          documentName: file.name,
-          documentUri: file.uri,
-          documentFile: file.file,
-        }));
-      } catch {
-        setFailure('That file could not be read. Choose a PDF or Word file.');
-      }
-      return;
-    }
-
-    // Screenshots accumulate. The first press opens the picker; once there is
-    // at least one, the button submits and "Add more" opens it again.
-    if (rung.input === 'screenshots' && (draft.attachments?.length ?? 0) === 0) {
-      await addScreenshots();
       return;
     }
 
     if (!canSubmit(rung, draft)) return;
 
+    operation.current = true;
     setBusy(true);
     try {
       dispatch({
@@ -255,16 +267,36 @@ export function RungScreen({ state, dispatch, services }: Props) {
       setFailure('That did not save. Check your connection and try again.');
       dispatch({ type: 'SET_RUNG_STATE', key, state: 'unsubmitted' });
     } finally {
+      operation.current = false;
       setBusy(false);
     }
   }
 
   return (
-    <Screen>
-      <View>
-        <Title>{rung.displayName}</Title>
-        {rung.requirement === 'optional' ? (
-          <Caption>Optional. Adding it gives practices more to go on.</Caption>
+    <Screen onboarding>
+      <View style={{ gap: 8 }}>
+        <Eyebrow>Professional records</Eyebrow>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <Title onboarding>
+            {rung.input === 'document_upload' ? `Your ${rung.displayName}` : rung.displayName}
+          </Title>
+          {rung.requirement === 'optional' ? (
+            <View
+              style={{
+                backgroundColor: colors.panelRaised,
+                borderRadius: 20,
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+              }}
+            >
+              <Caption>Optional</Caption>
+            </View>
+          ) : null}
+        </View>
+        {rung.input === 'document_upload' ? (
+          <Caption>Add your experience, qualifications and career history.</Caption>
+        ) : rung.requirement === 'optional' ? (
+          <Caption>Give practices a little more context about your experience.</Caption>
         ) : null}
       </View>
 
@@ -282,18 +314,14 @@ export function RungScreen({ state, dispatch, services }: Props) {
                 // truth, rather than being refused at the door.
                 { value: OTHER_JURISDICTION, label: 'Somewhere else' },
               ]}
-              onChange={(value) =>
-                setDraft((current) => ({ ...current, jurisdiction: value }))
-              }
+              onChange={(value) => setDraft((current) => ({ ...current, jurisdiction: value }))}
             />
             {draft.jurisdiction === OTHER_JURISDICTION ? (
               <Field
                 label="Where was it issued?"
                 value={draft.jurisdictionOther ?? ''}
                 placeholder="Country or state"
-                onChangeText={(text) =>
-                  setDraft((current) => ({ ...current, jurisdictionOther: text }))
-                }
+                onChangeText={(text) => setDraft((current) => ({ ...current, jurisdictionOther: text }))}
                 accessibilityLabel="Where was it issued?"
                 hint="We have no register for this one, so it will be recorded as something you told us."
               />
@@ -313,28 +341,128 @@ export function RungScreen({ state, dispatch, services }: Props) {
         ),
       )}
 
-      {rung.input === 'document_upload' && draft.documentName ? (
-        <Card>
-          <Eyebrow>Chosen</Eyebrow>
-          <Text style={type.bodyStrong}>{draft.documentName}</Text>
-        </Card>
+      {rung.input === 'document_upload' ? (
+        <>
+          <UploadField
+            title={`Add your ${rung.displayName}`}
+            description="Choose the document you want to include with your profile."
+            formats="PDF, DOC or DOCX · One document"
+            chooseLabel="Choose file"
+            onChoose={() => chooseFiles(false)}
+            busy={busy || picking}
+            selected={Boolean(draft.documentName)}
+            error={failure || validationError}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+              <View
+                style={{
+                  width: 52,
+                  height: 62,
+                  borderRadius: 10,
+                  backgroundColor: colors.panelRaised,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text style={type.label}>{draft.documentName?.split('.').pop()?.toUpperCase()}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={type.bodyStrong}>{draft.documentName}</Text>
+                <Caption>
+                  {[fileSize(filesFor(rung, draft)[0] ?? { name: '' }), 'Selected, not uploaded']
+                    .filter(Boolean)
+                    .join(' · ')}
+                </Caption>
+              </View>
+            </View>
+            <View
+              style={{ flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 12 }}
+            >
+              <Button
+                compact
+                label="Replace file"
+                variant="quiet"
+                block={false}
+                disabled={busy || picking}
+                onPress={() => chooseFiles(false)}
+              />
+              <Button
+                compact
+                label="Remove"
+                variant="danger"
+                block={false}
+                disabled={busy || picking}
+                onPress={() => {
+                  setDraft((current) => ({
+                    ...current,
+                    documentName: undefined,
+                    documentUri: undefined,
+                    documentFile: undefined,
+                    documentMimeType: undefined,
+                    documentSize: undefined,
+                  }));
+                  setTouched(false);
+                  setFailure(undefined);
+                }}
+              />
+            </View>
+          </UploadField>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <LineIcon name="lock" />
+            <Caption>Selecting a file does not verify its contents.</Caption>
+          </View>
+        </>
       ) : null}
 
       {rung.input === 'screenshots' ? (
-        <Card>
+        <UploadField
+          title={`Add your ${rung.displayName} screenshots`}
+          description="Choose enough images to show the relevant parts of your profile."
+          formats="Image files · Select multiple screenshots"
+          chooseLabel="Choose screenshots"
+          onChoose={() => chooseFiles(true)}
+          busy={busy || picking}
+          selected={Boolean(draft.attachments?.length)}
+          error={failure || validationError}
+        >
           {draft.attachments?.length ? (
-            <View style={[styles.photoSummary, wide && styles.photoSummaryWide]}>
-              <Pressable accessibilityRole="button" accessibilityLabel={`Review ${draft.attachments.length} selected photos`} disabled={busy} onPress={() => setReviewingPhotos(true)} style={styles.photoReview}>
+            <View style={styles.photoSummary}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Review ${draft.attachments.length} selected photos`}
+                disabled={busy || picking}
+                onPress={() => setReviewingPhotos(true)}
+                style={styles.photoReview}
+              >
                 <View style={styles.previewStack}>
                   <PhotoPreview file={draft.attachments[0]!} />
-                  {draft.attachments.length > 1 ? <View style={styles.photoCount}><Text style={styles.photoCountText}>+{draft.attachments.length - 1}</Text></View> : null}
+                  {draft.attachments.length > 1 ? (
+                    <View style={styles.photoCount}>
+                      <Text style={styles.photoCountText}>+{draft.attachments.length - 1}</Text>
+                    </View>
+                  ) : null}
                 </View>
                 <View style={styles.photoCopy}>
-                  <Text style={type.bodyStrong}>{draft.attachments.length} {draft.attachments.length === 1 ? 'screenshot' : 'screenshots'} selected</Text>
-                  <Text style={type.caption}>Review or remove photos</Text>
+                  <Text style={type.bodyStrong}>
+                    {draft.attachments.length} {draft.attachments.length === 1 ? 'screenshot' : 'screenshots'}{' '}
+                    selected
+                  </Text>
+                  <Text style={type.caption}>Selected, not uploaded</Text>
+                  <Text style={[type.caption, { color: colors.coral, marginTop: 6 }]}>
+                    Review or remove photos →
+                  </Text>
                 </View>
               </Pressable>
-              <Button label="Add more" variant="secondary" block={false} disabled={busy} onPress={addScreenshots} />
+              <View style={{ alignSelf: 'flex-end' }}>
+                <Button
+                  compact
+                  label="Add more"
+                  variant="secondary"
+                  block={false}
+                  disabled={busy || picking}
+                  onPress={() => chooseFiles(true)}
+                />
+              </View>
             </View>
           ) : (
             <View style={styles.emptyPhotos}>
@@ -342,66 +470,121 @@ export function RungScreen({ state, dispatch, services }: Props) {
               <Caption>Choose images that show your profile. You can add multiple screenshots.</Caption>
             </View>
           )}
-          <Modal visible={reviewingPhotos} transparent animationType="fade" onRequestClose={() => setReviewingPhotos(false)}>
-            <View style={{ flex: 1, backgroundColor: '#00000066', justifyContent: 'center', padding: spacing.lg }}>
-              <View style={{ backgroundColor: colors.panel, borderRadius: radii.card, padding: spacing.lg, maxHeight: '85%', width: '100%', maxWidth: 600, alignSelf: 'center', gap: spacing.md }}>
+          <Modal
+            visible={reviewingPhotos}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setReviewingPhotos(false)}
+          >
+            <View
+              style={{ flex: 1, backgroundColor: '#00000066', justifyContent: 'center', padding: spacing.lg }}
+            >
+              <View
+                style={{
+                  backgroundColor: colors.panel,
+                  borderRadius: radii.card,
+                  padding: spacing.lg,
+                  maxHeight: '85%',
+                  width: '100%',
+                  maxWidth: 600,
+                  alignSelf: 'center',
+                  gap: spacing.md,
+                }}
+              >
                 <Text style={type.heading}>Selected photos ({draft.attachments?.length ?? 0})</Text>
                 <ScrollView>
-          {(draft.attachments ?? []).map((file, index) => (
-            <View key={`${file.name}-${index}`} style={styles.attachment}>
-              <PhotoPreview file={file} /><Text style={[type.bodyStrong, { flex: 1 }]} numberOfLines={1}>
-                {file.name}
-              </Text>
-              <Pressable onPress={() => removeScreenshot(index)} accessibilityRole="button">
-                <Text style={styles.remove}>Remove</Text>
-              </Pressable>
-            </View>
-          ))}
+                  {(draft.attachments ?? []).map((file, index) => (
+                    <View key={`${file.name}-${index}`} style={styles.attachment}>
+                      <PhotoPreview file={file} />
+                      <Text style={[type.bodyStrong, { flex: 1 }]} numberOfLines={1}>
+                        {file.name}
+                      </Text>
+                      <Pressable
+                        disabled={busy || picking}
+                        style={{ minHeight: 44, justifyContent: 'center' }}
+                        onPress={() => removeScreenshot(index)}
+                        accessibilityLabel={`Remove ${file.name}`}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.remove}>Remove</Text>
+                      </Pressable>
+                    </View>
+                  ))}
                 </ScrollView>
-                <Button label="Done" onPress={() => setReviewingPhotos(false)} />
+                <Button compact label="Done" onPress={() => setReviewingPhotos(false)} />
               </View>
             </View>
           </Modal>
-
-        </Card>
+        </UploadField>
       ) : null}
 
-      {status ? <StatusLine tone="checked">{status}</StatusLine> : null}
-      {fields.length === 0 && validationError ? <ErrorText>{validationError}</ErrorText> : null}
-      {failure ? <ErrorText>{failure}</ErrorText> : null}
+      {rung.input === 'screenshots' && canSkip(rung) ? (
+        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+          <LineIcon name="lock" />
+          <View style={{ flex: 1 }}>
+            <Caption>You can skip this step and add screenshots later from your profile.</Caption>
+          </View>
+        </View>
+      ) : null}
+      {status ? (
+        <StatusLine tone="checked">
+          {rung.input === 'document_upload' || rung.input === 'screenshots'
+            ? `Previous submission: ${status}`
+            : status}
+        </StatusLine>
+      ) : null}
+      {rung.input !== 'document_upload' &&
+      rung.input !== 'screenshots' &&
+      fields.length === 0 &&
+      validationError ? (
+        <ErrorText>{validationError}</ErrorText>
+      ) : null}
+      {rung.input !== 'document_upload' && rung.input !== 'screenshots' && failure ? (
+        <ErrorText>{failure}</ErrorText>
+      ) : null}
 
-      <View style={[styles.actions, wide && styles.actionsWide]}>
-      <View style={wide ? styles.primaryAction : undefined}><Button label={primaryActionLabel(rung, progress, draft)} onPress={handlePrimary} busy={busy} /></View>
-
-      {canSkip(rung) ? (
+      <ScreenActions>
         <Button
-          label="Skip for now"
-          block={false}
-          disabled={busy}
-          variant="quiet"
-          onPress={() => {
-            dispatch({ type: 'SKIP_RUNG', key });
-            dispatch({ type: 'NEXT' });
-          }}
+          compact
+          label={primaryActionLabel(rung, progress, draft)}
+          onPress={handlePrimary}
+          busy={busy}
+          disabled={picking}
         />
-      ) : null}
-      </View>
+
+        {canSkip(rung) ? (
+          <Button
+            label="Skip for now"
+            block={false}
+            disabled={busy || picking}
+            variant="quiet"
+            onPress={() => {
+              dispatch({ type: 'SKIP_RUNG', key });
+              dispatch({ type: 'NEXT' });
+            }}
+          />
+        ) : null}
+      </ScreenActions>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   photoSummary: { gap: spacing.md },
-  photoSummaryWide: { flexDirection: 'row', alignItems: 'center' },
   photoReview: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1, minWidth: 0 },
   photoCopy: { flex: 1, gap: spacing.xxs },
   previewStack: { width: 72, height: 72 },
-  photoCount: { position: 'absolute', right: -4, bottom: -4, backgroundColor: colors.coral, borderRadius: radii.pill, paddingHorizontal: 8, paddingVertical: 4 },
+  photoCount: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    backgroundColor: colors.coral,
+    borderRadius: radii.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
   photoCountText: { ...type.bodyStrong, color: colors.panel, fontSize: 13 },
   emptyPhotos: { gap: spacing.sm },
-  actions: { gap: spacing.sm },
-  actionsWide: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
-  primaryAction: { width: 240 },
   attachment: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -421,6 +604,26 @@ function PhotoPreview({ file }: { file: PickedFile }) {
     }
     setUri(file.uri);
   }, [file]);
-  return uri ? <Image source={{ uri }} accessibilityLabel={file.name} style={{ width: 72, height: 72, borderRadius: radii.sm }} />
-    : <View style={{ width: 72, height: 72, padding: spacing.xs, borderRadius: radii.sm, backgroundColor: colors.ink, justifyContent: 'center' }}><Text style={[type.caption, { fontSize: 11 }]} numberOfLines={3}>{file.name}</Text></View>;
+  return uri ? (
+    <Image
+      source={{ uri }}
+      accessibilityLabel={file.name}
+      style={{ width: 72, height: 72, borderRadius: radii.sm }}
+    />
+  ) : (
+    <View
+      style={{
+        width: 72,
+        height: 72,
+        padding: spacing.xs,
+        borderRadius: radii.sm,
+        backgroundColor: colors.ink,
+        justifyContent: 'center',
+      }}
+    >
+      <Text style={[type.caption, { fontSize: 11 }]} numberOfLines={3}>
+        {file.name}
+      </Text>
+    </View>
+  );
 }

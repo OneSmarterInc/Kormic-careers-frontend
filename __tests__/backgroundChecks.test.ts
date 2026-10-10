@@ -128,8 +128,8 @@ describe('date of birth at signup', () => {
   });
 
   it('refuses a typed or half-typed date', () => {
-    expect(dateOfBirthProblem('11/02/1984', now)).toBe('Pick a date from the calendar.');
-    expect(dateOfBirthProblem('1984-2-11', now)).toBe('Pick a date from the calendar.');
+    expect(dateOfBirthProblem('11/02/1984', now)).toBe('Enter a real date in MM-DD-YYYY format.');
+    expect(dateOfBirthProblem('1984-2-11', now)).toBe('Enter a real date in MM-DD-YYYY format.');
   });
 
   it('refuses a day that does not exist', () => {

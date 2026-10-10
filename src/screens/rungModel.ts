@@ -39,6 +39,8 @@ export interface RungDraft {
   documentUri?: string;
   /** On web the picker hands back a File, and FormData needs that, not the uri. */
   documentFile?: File;
+  documentMimeType?: string;
+  documentSize?: number;
   /**
    * For a rung that asks for screenshots. A LinkedIn profile does not fit in
    * one image, so this is a set the person builds up and can prune.
@@ -114,13 +116,6 @@ export function primaryActionLabel(
   switch (rung.input) {
     case 'oauth':
       return `Connect ${rung.displayName}`;
-    case 'document_upload':
-      return draft?.documentName || progress?.documentName ? 'Continue' : 'Choose a file';
-    case 'screenshots':
-      // Reads the draft, not the rung's progress. Keying it off progress meant
-      // the label never changed as screenshots were added, because nothing
-      // moved the rung's state until it was submitted.
-      return (draft?.attachments?.length ?? 0) > 0 ? 'Continue' : 'Add screenshots';
     default:
       return 'Continue';
   }
@@ -156,7 +151,7 @@ export function submissionSteps(rung: CorridorRung, draft: RungDraft): Submissio
 export function filesFor(rung: CorridorRung, draft: RungDraft): PickedFile[] {
   if (rung.input === 'document_upload') {
     return draft.documentName
-      ? [{ name: draft.documentName, uri: draft.documentUri, file: draft.documentFile }]
+      ? [{ name: draft.documentName, uri: draft.documentUri, file: draft.documentFile, mimeType: draft.documentMimeType, size: draft.documentSize }]
       : [];
   }
   if (rung.input === 'screenshots') return draft.attachments ?? [];
@@ -255,9 +250,9 @@ export function errorFor(rung: CorridorRung, draft: RungDraft, touched: boolean)
         ? 'Name the body that issued it.'
         : `Enter your ${rung.displayName.toLowerCase()} number.`;
     case 'document_upload':
-      return 'Choose a PDF or Word file.';
+      return 'Choose a PDF or Word document to continue.';
     case 'screenshots':
-      return 'Add at least one screenshot of your profile.';
+      return canSkip(rung) ? 'Choose at least one screenshot, or select Skip for now.' : 'Choose at least one screenshot to continue.';
     default:
       return undefined;
   }

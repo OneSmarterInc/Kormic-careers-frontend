@@ -27,6 +27,7 @@ import { colors, elevation, layout, pointer, radii, spacing, type } from '../the
 // --- layout ---------------------------------------------------------------
 
 interface ScreenProps {
+  onboarding?: boolean;
   children: React.ReactNode;
   /** Vertically centres a short screen instead of stacking from the top. */
   centred?: boolean;
@@ -38,9 +39,9 @@ interface ScreenProps {
 }
 
 /** Task-sized content columns with responsive gutters and natural vertical flow. */
-export function Screen({ children, centred = false, scroll = true, wide = false, contentWidth, compactSpacing = false, showsVerticalScrollIndicator = true }: ScreenProps) {
+export function Screen({ children, centred = false, scroll = true, wide = false, contentWidth, compactSpacing = false, showsVerticalScrollIndicator = true, onboarding = false }: ScreenProps) {
   const { width } = useWindowDimensions();
-  const gutter = width < 600 ? spacing.md : layout.gutter;
+  const gutter = width < (onboarding ? 760 : 600) ? spacing.md : layout.gutter;
   const column = (
     <View style={[styles.column, { maxWidth: contentWidth ?? (wide ? layout.profile : layout.content) }, !scroll && styles.columnFill, centred && styles.columnCentred]}>{children}</View>
   );
@@ -53,7 +54,7 @@ export function Screen({ children, centred = false, scroll = true, wide = false,
     <ScrollView
       style={styles.page}
       showsVerticalScrollIndicator={showsVerticalScrollIndicator}
-      contentContainerStyle={[styles.pageContent, compactSpacing && { paddingTop: spacing.md, paddingBottom: spacing.lg }, { paddingHorizontal: gutter }, centred && styles.pageCentred]}
+      contentContainerStyle={[styles.pageContent, onboarding && { paddingTop: width <= 760 ? 24 : 30, paddingBottom: width <= 520 ? 24 : 36 }, compactSpacing && { paddingTop: spacing.md, paddingBottom: spacing.lg }, { paddingHorizontal: gutter }, centred && styles.pageCentred]}
       keyboardShouldPersistTaps="handled"
     >
       {column}
@@ -75,8 +76,9 @@ export function Stack({ children, gap = spacing.md }: { children: React.ReactNod
 
 // --- text -----------------------------------------------------------------
 
-export function Title({ children }: { children: React.ReactNode }) {
-  return <Text accessibilityRole="header" style={type.title}>{children}</Text>;
+export function Title({ children, onboarding = false }: { children: React.ReactNode; onboarding?: boolean }) {
+  const compact = useWindowDimensions().width <= 760;
+  return <Text accessibilityRole="header" style={[type.title, onboarding && { fontSize: compact ? 27 : 30, lineHeight: compact ? 34 : 38, letterSpacing: -0.8 }]}>{children}</Text>;
 }
 
 export function Body({ children }: { children: React.ReactNode }) {
@@ -180,6 +182,7 @@ interface ButtonProps {
   disabled?: boolean;
   /** Fills the width. Primary actions do; inline ones do not. */
   block?: boolean;
+  compact?: boolean;
 }
 
 export function Button({
@@ -189,18 +192,22 @@ export function Button({
   busy = false,
   disabled = false,
   block = true,
+  compact = false,
 }: ButtonProps) {
   const inert = disabled || busy;
+  const [focused, setFocused] = React.useState(false);
+  const focusStyle = Platform.OS === 'web' && focused ? { outlineStyle: 'solid', outlineWidth: 2, outlineColor: colors.coral, outlineOffset: 3 } as ViewStyle : undefined;
 
   if (variant === 'quiet' || variant === 'danger') {
     return (
       <Pressable
         onPress={onPress}
+        onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
         disabled={inert}
         accessibilityRole="button"
         accessibilityState={{ disabled: inert, busy }}
         style={({ pressed }) => [
-          styles.quiet,
+          styles.quiet, focusStyle,
           block && styles.quietBlock,
           pointer,
           pressed && styles.quietPressed,
@@ -227,11 +234,13 @@ export function Button({
   return (
     <Pressable
       onPress={onPress}
+      onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
       disabled={inert}
       accessibilityRole="button"
       accessibilityState={{ disabled: inert, busy }}
       style={({ pressed }) => [
-        styles.button,
+        styles.button, focusStyle,
+        compact && { minHeight: 48, paddingVertical: 12 },
         isDestructive ? styles.destructive : isPrimary ? styles.primary : styles.secondary,
         (isPrimary || isDestructive) && !inert && elevation.button,
         block && styles.block,
@@ -302,138 +311,8 @@ export function Field({ label, hint, error, locked, style, ...input }: FieldProp
   );
 }
 
-export interface DateFieldProps {
-  label?: string;
-  hint?: string;
-  error?: string;
-  /** ISO YYYY-MM-DD, or empty. */
-  value: string;
-  onChange: (value: string) => void;
-  /** Latest date that may be picked, ISO. */
-  max?: string;
-  min?: string;
-  accessibilityLabel?: string;
-}
-
-function isoDate(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-function readableDate(iso: string): string {
-  const [year, month, day] = iso.split('-').map(Number);
-  if (!year || !month || !day) return iso;
-  return new Date(year, month - 1, day).toLocaleDateString('en-GB', {
-    day: 'numeric', month: 'long', year: 'numeric',
-  });
-}
-
-/**
- * A date chosen from a calendar, never typed.
- *
- * Typed dates were the failure: "11/02/1984" means two different days in two
- * countries, and a half-typed one was silently dropped from the save. On the
- * web this is the browser's own date input; on a phone it is the platform's
- * picker. Either way the value is always a real day in YYYY-MM-DD.
- */
-export function DateField({ label, hint, error, value, onChange, max, min, accessibilityLabel }: DateFieldProps) {
-  const [open, setOpen] = React.useState(false);
-  const dateInput = React.useRef<HTMLInputElement | null>(null);
-
-  const control =
-    Platform.OS === 'web'
-      ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-        <View style={{ flex: 1 }}>{React.createElement('input', {
-          ref: dateInput,
-          type: 'date',
-          value,
-          max,
-          min,
-          'aria-label': accessibilityLabel ?? label,
-          onChange: (event: { target: { value: string } }) => onChange(event.target.value),
-          style: {
-            ...webInputStyle,
-            borderColor: error ? colors.error : colors.line,
-          },
-        })}</View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Open date of birth calendar" onPress={() => {
-          try { if (dateInput.current?.showPicker) dateInput.current.showPicker(); else dateInput.current?.focus(); } catch { dateInput.current?.focus(); }
-        }} style={{ padding: spacing.sm }}><Text style={type.body}>Calendar</Text></Pressable>
-      </View>
-      : (
-          <Pressable
-            onPress={() => setOpen(true)}
-            accessibilityRole="button"
-            accessibilityLabel={accessibilityLabel ?? label}
-            style={[styles.input, styles.dateButton, Boolean(error) && styles.inputError]}
-          >
-            <Text style={[type.body, !value && { color: colors.muted }]}>
-              {value ? readableDate(value) : 'Choose a date'}
-            </Text>
-          </Pressable>
-        );
-
-  return (
-    <View style={styles.field}>
-      {label ? <Text style={type.label}>{label}</Text> : null}
-      {control}
-      {open && Platform.OS !== 'web' ? (
-        <NativeDatePicker
-          value={value}
-          max={max}
-          min={min}
-          onDone={(picked) => {
-            setOpen(false);
-            if (picked) onChange(picked);
-          }}
-        />
-      ) : null}
-      {error ? (
-        <Text style={styles.fieldError}>{error}</Text>
-      ) : hint ? (
-        <Text style={type.caption}>{hint}</Text>
-      ) : null}
-    </View>
-  );
-}
-
-function NativeDatePicker({
-  value, max, min, onDone,
-}: { value: string; max?: string; min?: string; onDone: (picked?: string) => void }) {
-  // Required here rather than at the top of the file: the module is native
-  // only, and loading it on the web or under the test runner would fail.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const DateTimePicker = require('@react-native-community/datetimepicker').default;
-  const toDate = (iso?: string) => (iso ? new Date(`${iso}T12:00:00`) : undefined);
-  return (
-    <DateTimePicker
-      mode="date"
-      value={toDate(value) ?? toDate(max) ?? new Date(1990, 0, 1)}
-      maximumDate={toDate(max)}
-      minimumDate={toDate(min)}
-      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-      onChange={(event: { type: string }, date?: Date) => {
-        onDone(event.type === 'set' && date ? isoDate(date) : undefined);
-      }}
-    />
-  );
-}
-
-const webInputStyle = {
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderRadius: radii.input,
-  padding: `${spacing.sm + 2}px ${spacing.md}px`,
-  color: colors.paper,
-  backgroundColor: colors.panel,
-  fontFamily: 'Inter_400Regular',
-  fontSize: 15,
-  minHeight: 48,
-  boxSizing: 'border-box',
-  width: '100%',
-  // Match the browser calendar control to the light theme.
-  colorScheme: 'light',
-} as const;
+export { DateField } from './DateField';
+export type { DateFieldProps } from './DateField';
 
 export interface CheckFieldProps {
   checked: boolean;

@@ -295,9 +295,9 @@ describe('rung screen model', () => {
     ]);
   });
 
-  it('reads the label off the draft, so it changes as screenshots are added', () => {
+  it('keeps Continue separate from screenshot selection', () => {
     const linkedin = sampleCorridor.rungs[5]!;
-    expect(primaryActionLabel(linkedin, undefined, {})).toBe('Add screenshots');
+    expect(primaryActionLabel(linkedin, undefined, {})).toBe('Continue');
     expect(primaryActionLabel(linkedin, undefined, { attachments: [{ name: 'top.png' }] })).toBe(
       'Continue',
     );

@@ -376,7 +376,7 @@ export function RungScreen({ state, dispatch, services }: Props) {
               </View>
             </View>
             <View
-              style={{ flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 12 }}
+              style={{ flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', columnGap: 24, rowGap: 8, marginTop: 12 }}
             >
               <Button
                 compact
